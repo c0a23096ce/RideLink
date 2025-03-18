@@ -1,0 +1,25 @@
+services:
+  demo-app:
+    build: .
+    volumes:
+      - .dockervenv:/src/.venv
+      - /home/eisho/dxcontest:/src
+    ports:
+      - "8000:8000"
+    environment:
+      - WATCHFILE_FORCE_POLLING=true
+    
+  db:
+    image: mysql:8.0
+    platform: linux/x86_64
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_DATABASE: "demo"
+      TZ: "Asia/Tokyo"
+    volumes:
+      - db-data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    ports:
+      - "33306:3306"
+volumes:
+  db-data:
