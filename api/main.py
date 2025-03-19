@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 
+from api.routers import User
 
 app = FastAPI()
 
-@app.get("/hello")
-async def hello():
-    return {"message": "Hello World"}
+from api.database import reset_database
+reset_database()
+
+app.include_router(User.router)

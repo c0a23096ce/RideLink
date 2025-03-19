@@ -53,6 +53,9 @@ class UserCRUD:
         Returns:
             ユーザーオブジェクト、または存在しない場合はNone
         """
+        print(f"検索対象のemail: {email}")
+        print(f"クエリ対象のname: {(self.db_session.query(User).filter(User.email == email).first()).name}")
+        print(f"クエリ対象のtype: {type(self.db_session.query(User).filter(User.email == email).first())}")
         return self.db_session.query(User).filter(User.email == email).first()
 
     def update_user(self, user_id: int, update_data: Dict[str, Any]) -> Optional[User]:

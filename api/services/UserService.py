@@ -6,12 +6,17 @@ from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 
 from api.models.models import User
-from api.crud.UserCRUD import UserCRUD
+from api.cruds.UserCRUD import UserCRUD
+
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 # JWT設定
-SECRET_KEY = "your_secret_key"  # セキュリティ上、環境変数などで管理してください
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")  # セキュリティ上、環境変数などで管理してください
+ALGORITHM = os.getenv("JWT_ALGORITHM")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
 
 class UserService:
     def __init__(self, db_session: Session):
@@ -95,22 +100,19 @@ class UserService:
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
         return encoded_jwt
     
-    def get_current_user(self, token: str) -> Optional[User]:
+    def get_user_by_email(self, email: str) -> Optional[User]:
         """
-        トークンから現在のユーザーを取得します
+        emailから現在のユーザーを取得します
         
         Args:
             token: JWTトークン
             
         Returns:
-            トークンに対応するユーザーオブジェクト、またはNone（エラー時）
+            emailに対応するユーザーオブジェクト、またはNone（エラー時）
         """
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            email: str = payload.get("sub")
-            if email is None:
-                return None
-            user = self.user_crud.get_user_by_email(email)
-            return user
-        except JWTError:
-            return None
+        user = self.user_crud.get_user_by_email(email)
+        if user is None:
+            print("No user found in UserService")
+        else:
+            print(f"User found in UserService: {user}")
+        return user

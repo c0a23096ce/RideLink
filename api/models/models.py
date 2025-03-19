@@ -8,10 +8,10 @@ class User(Base):
     __tablename__ = 'users'
     
     user_id = Column(Integer, primary_key=True)  # ユーザーの一意のID
-    name = Column(String)                        # ユーザーの名前
-    email = Column(String, unique=True)          # ユーザーのメールアドレス（重複不可）
-    phone = Column(String)                       # ユーザーの電話番号
-    created_at = Column(DateTime, default=func.now())  # ユーザー作成日時
+    name = Column(String(255), nullable=False)   # ユーザーの名前（長さを指定）
+    email = Column(String(255), unique=True, nullable=False)  # ユーザーのメールアドレス（長さを指定）
+    phone = Column(String(20), nullable=False)   # ユーザーの電話番号（長さを指定）
+    hashed_password = Column(String(255), nullable=False)  # ハッシュ化されたパスワード
     
     # 1対多のリレーション: 1人のユーザーは複数の旅行リクエストを持つ
     trip_requests = relationship("TripRequest", back_populates="user")
@@ -26,7 +26,7 @@ class TripRequest(Base):
     destination_latitude = Column(Float)  # 目的地の緯度
     destination_longitude = Column(Float) # 目的地の経度
     departure_time = Column(DateTime)   # 出発予定時刻
-    status = Column(String)             # リクエストの状態（'active'/'matched'/'completed'/'cancelled'）
+    status = Column(String(50))         # リクエストの状態（'active'/'matched'/'completed'/'cancelled'）
     created_at = Column(DateTime, default=func.now())  # リクエスト作成日時
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())  # 最終更新日時
     
@@ -45,7 +45,7 @@ class Match(Base):
     match_id = Column(Integer, primary_key=True)  # マッチングの一意のID
     request_id1 = Column(Integer, ForeignKey('trip_requests.request_id'))  # リクエスト側のID
     request_id2 = Column(Integer, ForeignKey('trip_requests.request_id'))  # マッチング側のID
-    status = Column(String)  # マッチングの状態（'pending'/'accepted'/'rejected'/'completed'）
+    status = Column(String(50))  # マッチングの状態（'pending'/'accepted'/'rejected'/'completed'）
     created_at = Column(DateTime, default=func.now())  # マッチング作成日時
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())  # 最終更新日時
     
@@ -63,8 +63,8 @@ class MatchHistory(Base):
     
     history_id = Column(Integer, primary_key=True)  # 履歴の一意のID
     match_id = Column(Integer, ForeignKey('matches.match_id'))  # 関連するマッチングのID
-    previous_status = Column(String)  # 状態変更前の値
-    new_status = Column(String)       # 状態変更後の値
+    previous_status = Column(String(50))  # 状態変更前の値
+    new_status = Column(String(50))       # 状態変更後の値
     changed_by = Column(Integer, ForeignKey('users.user_id'))  # 誰が変更したか
     created_at = Column(DateTime, default=func.now())  # 履歴作成日時（状態変更日時）
     

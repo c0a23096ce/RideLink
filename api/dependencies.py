@@ -7,10 +7,20 @@ from sqlalchemy.orm import Session
 from api.database import SessionLocal
 from api.schemas.users import TokenData
 from api.services.UserService import UserService
-from api.config import settings
+from api.schemas.users import User as UserSchema
+
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+# JWT設定
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")  # セキュリティ上、環境変数などで管理してください
+ALGORITHM = os.getenv("JWT_ALGORITHM")
+ACCESS_TOKEN_EXPIRE_MINUTES = os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES")
+
 
 # OAuth2のトークンURLを設定
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="users/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/testlogin")
 
 def get_db() -> Generator:
     """
@@ -34,7 +44,7 @@ def get_token_data(token: str = Depends(oauth2_scheme)) -> TokenData:
     
     try:
         # トークンからペイロードを取得
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=ALGORITHM)
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
@@ -48,7 +58,9 @@ def get_current_user(token_data: TokenData = Depends(get_token_data), db: Sessio
     """
     トークンデータを抽出し、トークンデータのemailから現在のユーザーを取得する
     """
+    print(f"トークンデータのemail: {token_data.email}")
     user_service = UserService(db)
+    print(f"ユーザーサービス: {user_service}")
     user = user_service.get_user_by_email(token_data.email)
     
     if user is None:
@@ -56,5 +68,5 @@ def get_current_user(token_data: TokenData = Depends(get_token_data), db: Sessio
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-        
-    return user
+    # SQLAlchemyオブジェクトはそのままでは返せないのでPydanticモデルに変換
+    return UserSchema.from_orm(user)

@@ -5,6 +5,8 @@ from api.services.UserService import UserService
 from api.schemas.users import UserCreate, User, UserLogin, Token, TokenData
 from api.dependencies import get_db, get_token_data, get_current_user
 
+from fastapi.security import OAuth2PasswordRequestForm
+
 router = APIRouter()
 
 @router.post("/register", response_model=User)
@@ -52,6 +54,22 @@ async def login(
         )
     
     access_token = user_service.create_access_token(data={"sub": user.email}) # emailをトークンに含める
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/testlogin", response_model=Token)
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(), 
+    db: Session = Depends(get_db)
+):
+    user_service = UserService(db)
+    user = user_service.authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token = user_service.create_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/me", response_model=User)

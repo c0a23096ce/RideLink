@@ -2,16 +2,20 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+from api.models.models import Base
+
 # MySQL接続URL
-SQLALCHEMY_DATABASE_URL = "mysql+pymysql://username:password@localhost/rideshare"
+SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root@db:3306/demo?charset=utf8"
 
 # エンジン作成
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
+    SQLALCHEMY_DATABASE_URL, echo=True
 )
-
-# セッションファクトリ作成
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# モデルのベースクラス
-Base = declarative_base()
+def reset_database():
+    """
+    データベースをリセットします
+    """
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)

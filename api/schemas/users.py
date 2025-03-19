@@ -1,9 +1,9 @@
 from pydantic import BaseModel, EmailStr, Field
 
 class UserBase(BaseModel):
-    name: str
-    email: EmailStr
-    phone: str
+    name: str = Field(..., min_length=1, example="John Doe")
+    email: str = Field(..., example="XXXX@gmail.com")
+    phone: str = Field(..., min_length=10, max_length=11, example="08012345678")
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
@@ -17,8 +17,8 @@ class User(UserBase):
 
 # ログイン用のスキーマを追加
 class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
+    email: str = Field(..., example="XXXX@gmail.com")
+    password: str = Field(..., min_length=8)
 
 # トークン応答用のスキーマ
 class Token(BaseModel):
