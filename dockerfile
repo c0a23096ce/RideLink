@@ -17,7 +17,8 @@ COPY pyproject.toml* poetry.lock* ./
 WORKDIR /src
 
 # poetryでライブラリをインストール
-RUN poetry config virtualenvs.in-project true
+# 仮想環境をプロジェクト内に作成失敗する場合はFalseに変更
+RUN poetry config virtualenvs.in-project true 
 RUN if [ -f pyproject.toml ]; then poetry install --no-root; fi
 
 # vicornのサーバーを立ち上げる

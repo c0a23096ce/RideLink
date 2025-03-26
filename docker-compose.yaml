@@ -3,7 +3,7 @@ services:
     build: .
     volumes:
       - .dockervenv:/src/.venv
-      - /home/eisho/dxcontest:/src
+      - .:/src
     ports:
       - "8000:8000"
     environment:
