@@ -6,16 +6,17 @@ import api.schemas.matchs as match_shema
 
 router = APIRouter()
 
-@router.post("/pool/join")
-async def join_pool(player_id: int, skill_level: int, db: Session = Depends(get_db)):
+@router.post("/matching/create_lobby", response_model=match_shema.CreateLobbyResponse)
+async def create_lobby(match_data: match_shema.MatchCreate, db: Session = Depends(get_db)):
     matching_service = MatchingService(db)
-    entry = await matching_service.add_player_to_pool(
-        player_id=player_id,
-        skill_level=skill_level,
-        preferences={},
-        location=None
+    lobby = matching_service.create_driver_lobby(
+        driver_id=match_data.driver_id,
+        location=match_data.starting_location,
+        destination=match_data.destination,
     )
-    return {"message": "Player added", "entry": {
-        "player_id": entry.player_id,
-        "status": entry.status
-    }}
+    return lobby
+
+@router.post("/matching/join_lobby")
+async def join_lobby(match_data: match_shema.MatchJoin, db: Session = Depends(get_db)):
+    matching_service = MatchingService(db)
+    matching_service.request_random_ride(match_data.user_id)

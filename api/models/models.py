@@ -16,29 +16,6 @@ class User(Base):
     # 1対多のリレーション: 1人のユーザーは複数の旅行リクエストを持つ
     trip_requests = relationship("TripRequest", back_populates="user")
 
-class TripRequest(Base):
-    __tablename__ = 'trip_requests'
-    
-    request_id = Column(Integer, primary_key=True)  # リクエストの一意のID
-    user_id = Column(Integer, ForeignKey('users.user_id'))  # どのユーザーがリクエストしたか
-    current_latitude = Column(Float)    # 現在地の緯度
-    current_longitude = Column(Float)   # 現在地の経度
-    destination_latitude = Column(Float)  # 目的地の緯度
-    destination_longitude = Column(Float) # 目的地の経度
-    departure_time = Column(DateTime)   # 出発予定時刻
-    status = Column(String(50))         # リクエストの状態（'active'/'matched'/'completed'/'cancelled'）
-    created_at = Column(DateTime, default=func.now())  # リクエスト作成日時
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())  # 最終更新日時
-    
-    # 多対1のリレーション: 各リクエストは1人のユーザーに属する
-    user = relationship("User", back_populates="trip_requests")
-    
-    # 1対多のリレーション: 1つのリクエストは複数のマッチングで「リクエスト側」になりうる
-    matches_as_requester = relationship("Match", foreign_keys="Match.request_id1")
-    
-    # 1対多のリレーション: 1つのリクエストは複数のマッチングで「マッチング側」になりうる
-    matches_as_matched = relationship("Match", foreign_keys="Match.request_id2")
-
 class Match(Base):
     __tablename__ = 'matches'
     
