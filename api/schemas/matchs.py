@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Tuple, List, Dict, Any
+from typing import Tuple, List, Dict, Any, Optional
 
 class User(BaseModel):
     id: int = Field(..., example=1)
@@ -17,20 +17,31 @@ class MatchCreate(BaseModel):
 class MatchJoin(BaseModel):
     passenger_id: int = Field(..., example=1)
     passenger_location: Tuple[float, float] = Field(..., example=(35.681236, 139.767125))
-    destination: Tuple[float, float] = Field(..., example=(35.681236, 139.767125))
+    passenger_destination: Tuple[float, float] = Field(..., example=(35.681236, 139.767125))
+
+class ApprovePassengerMatch(BaseModel):
+    passenger_id: int = Field(..., example=1)
+    lobby_id: str = Field(..., example="123e4567-e89b-12d3-a456-426614174000")
+
+class ApproveDriverMatch(ApprovePassengerMatch):
+    driver_id: int = Field(..., example=1)
+    
 
 class CreateLobbyResponse(BaseModel):
-    success: bool = Field(..., example=True)  # 成功フラグ
-    lobby_id: str = Field(..., example="123e4567-e89b-12d3-a456-426614174000")  # ロビーID
-    lobby: Dict[str, Any] = Field(..., example={
-        "lobby_id": "123e4567-e89b-12d3-a456-426614174000",
-        "driver_id": 1,
-        "starting_location": (35.681236, 139.767125),
-        "destination": (35.689487, 139.691706),
-        "max_distance": 5.0,
-        "max_passengers": 4,
-        "current_passengers": 0,
-        "status": "open",
-        "created_at": 1672531200.0,
-        "preferences": {}
-    })  # ロビー情報
+    success: bool
+    lobby_id: str = None  # Noneを許可する
+    lobby: dict = None    # Noneを許可する
+    error: str = None     # エラーメッセージ用フィールド
+    
+class JoinLobbyResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    error: Optional[str] = None
+    lobby: Optional[Dict[str, Any]] = None
+    start_distance: Optional[float] = None
+    destination_distance: Optional[float] = None
+
+class ApprovePassengerResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    confirmed: Optional[str] = None

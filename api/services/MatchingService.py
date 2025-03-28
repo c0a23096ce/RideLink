@@ -8,7 +8,7 @@ import uuid
 import random
 from geopy.distance import geodesic 
 
-from api.models.models import Match
+from api.models.models import Match, MatchPassenger
 
 class UserRole:
     """ユーザーの役割を定義する定数"""
@@ -35,7 +35,7 @@ class RideLobby:
                  starting_location: Tuple[float, float],
                  destination: Optional[Tuple[float, float]],
                  max_distance: float = 5.0,
-                 max_passengers: int = 4,
+                 max_passengers: int = 1,
                  preferences: Dict[str, Any] = {}):
         
         self.lobby_id = lobby_id
@@ -110,6 +110,7 @@ class RideLobby:
         
     def is_full(self) -> bool:
         """ロビーが満員かどうか"""
+        print(f"ロビー内の乗客数: {len(self.confirmed_passengers)}, 最大乗客数: {self.max_passengers}")
         return len(self.confirmed_passengers) >= self.max_passengers
         
     def to_dict(self) -> Dict[str, Any]:
@@ -139,12 +140,25 @@ class RideLobby:
         return result
 
 class MatchingService:
-    def __init__(self, db: Session):
-        self.db = db 
+    _instance = None
+    
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
+    def __init__(self, db=None):
+        if not self._initialized:
+            self.db = db
+            self.ride_lobbies = {}
+            self.user_lobbies = {}
+            self._initialized = True
+        elif db is not None:
+            self.db = db  # DBオブジェクトは常に更新
+
         self.active_connections: Dict[int, WebSocket] = {}  # ユーザーIDとWebSocketの対応
-        self.ride_lobbies: Dict[str, RideLobby] = {}  # ロビーID: ロビー
         self.user_roles: Dict[int, str] = {}  # ユーザーID: 役割(driver/passenger)
-        self.user_lobbies: Dict[int, str] = {}  # ユーザーID: 所属ロビーID
         self.lock = asyncio.Lock()  # 排他制御用ロック
         
     async def register_connection(self, user_id: int, websocket: WebSocket):
@@ -176,7 +190,7 @@ class MatchingService:
                                 starting_location: Tuple[float, float],
                                 destination: Optional[Tuple[float, float]] = None,
                                 max_distance: float = 5.0,
-                                max_passengers: int = 4,
+                                max_passengers: int = 1,
                                 preferences: Dict[str, Any] = {}) -> Dict[str, Any]:
         """ドライバーがロビーを作成"""
         async with self.lock:
@@ -428,7 +442,7 @@ class MatchingService:
             return {
                 "success": True,
                 "message": "乗客を承認しました" + ("。マッチングが確定しました。" if is_confirmed else ""),
-                "confirmed": is_confirmed
+                "confirmed": RequestStatus.CONFIRMED if is_confirmed else RequestStatus.PENDING
             }
     
     async def passenger_approve_ride(self, passenger_id: int, lobby_id: str) -> Dict[str, Any]:
@@ -469,7 +483,7 @@ class MatchingService:
             return {
                 "success": True,
                 "message": "乗車を承認しました" + ("。マッチングが確定しました。" if is_confirmed else ""),
-                "confirmed": is_confirmed
+                "confirmed": RequestStatus.CONFIRMED if is_confirmed else RequestStatus.PENDING
             }
     
     async def get_lobby_requests(self, driver_id: int, lobby_id: str) -> Dict[str, Any]:
@@ -517,16 +531,36 @@ class MatchingService:
             
             return available_lobbies
     
+    async def get_all_lobbies(self) -> List[Dict[str, Any]]:
+        """全ロビー情報を取得"""
+        async with self.lock:
+            all_lobbies = []
+            for lobby in self.ride_lobbies.values():
+                all_lobbies.append(lobby.to_dict())
+            return all_lobbies
+    
     async def _complete_matching(self, lobby: RideLobby) -> Match:
         """マッチングを完了してデータベースに保存"""
         # ロビーのステータスを更新
+        print(f"マッチング完了: {lobby.lobby_id} - 参加者: {lobby.confirmed_passengers}")
         lobby.status = LobbyStatus.COMPLETED
         
         # データベースにマッチを作成
-        match = Match(status="matched")
+        match = Match(
+            driver=lobby.driver_id, 
+            status="Moving",
+            )
         self.db.add(match)
-        self.db.flush()  # IDを取得するためにフラッシュ
         
+        # 乗車者情報をデータベースに保存
+        for passenger_id in lobby.confirmed_passengers:
+            passenger = MatchPassenger(
+                match_id=match.match_id,
+                passenger_id=passenger_id
+            )
+            self.db.add(passenger)
+            
+            
         # 参加者全員に通知
         match_participants = [lobby.driver_id] + list(lobby.confirmed_passengers)
         
@@ -550,6 +584,8 @@ class MatchingService:
             del self.ride_lobbies[lobby.lobby_id]
         
         self.db.commit()
+        self.db.refresh(match)
+        print(f"DBにマッチを保存: {match.match_id}")
         return match
     
     async def request_random_ride(self, 
@@ -579,3 +615,16 @@ class MatchingService:
             result["destination_distance"] = lobby_info["destination_distance"]
         
         return result
+    
+    async def get_lobby_info(self, lobby_id: str) -> Dict[str, Any]:
+        """ロビーの詳細情報を取得"""
+        async with self.lock:
+            if lobby_id not in self.ride_lobbies:
+                return {"success": False, "error": "ロビーが存在しません"}
+            
+            lobby = self.ride_lobbies[lobby_id]
+            return {
+                "success": True,
+                "lobby": lobby.to_dict(),
+                "requests": lobby.get_passenger_requests()
+            }
