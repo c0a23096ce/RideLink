@@ -7,15 +7,25 @@ from api.dependencies import get_db, get_token_data, get_current_user
 
 from fastapi.security import OAuth2PasswordRequestForm
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/user",
+    tags=["User"],
+    responses={404: {"description": "Not found"}},
+)
 
 @router.post("/register", response_model=User)
 async def register(
     user_data: UserCreate,
     db: Session = Depends(get_db)
 ):
-    """
-    新規ユーザー登録エンドポイント
+    """ユーザー登録エンドポイント
+
+    Args:
+        user_data (UserCreate): 名前、メールアドレス、電話番号、パスワード
+        db (Session, optional): データベースセッション. Defaults to Depends(get_db).
+
+    Returns:
+        User: 名前、メールアドレス、電話番号、ユーザーID
     """
     user_service = UserService(db)
     user = user_service.register_user(
@@ -38,8 +48,12 @@ async def login(
     user_data: UserLogin, 
     db: Session = Depends(get_db)
 ):
-    """
-    ログインエンドポイント
+    """ユーザーログインエンドポイント
+    Args:
+        user_data (UserLogin): メールアドレス、パスワード
+        db (Session, optional): データベースセッション. Defaults to Depends(get_db).
+    Returns:
+        Token: アクセストークン、トークンタイプ
     """
     user_service = UserService(db)
     user = user_service.authenticate_user(
@@ -61,6 +75,15 @@ async def login(
     form_data: OAuth2PasswordRequestForm = Depends(), 
     db: Session = Depends(get_db)
 ):
+    """FastAPIのOAuth2PasswordRequestFormを使用したログインエンドポイント
+
+    Args:
+        form_data (OAuth2PasswordRequestForm, optional): メールアドレス、パスワード
+        db (Session, optional): データベースセッション. Defaults to Depends(get_db).
+
+    Returns:
+        Token: アクセストークン、トークンタイプ 
+    """
     user_service = UserService(db)
     user = user_service.authenticate_user(form_data.username, form_data.password)
     if not user:
@@ -74,7 +97,10 @@ async def login(
 
 @router.get("/me", response_model=User)
 async def get_me(current_user: User = Depends(get_current_user)):
-    """
-    トークンから現在のユーザー情報を取得するエンドポイント
+    """トークンから現在のユーザー情報を取得するエンドポイント
+    Args:
+        current_user (User, optional): 現在のユーザー. Defaults to Depends(get_current_user).
+    Returns:
+        User: 現在のユーザー情報
     """
     return current_user

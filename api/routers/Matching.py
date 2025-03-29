@@ -4,11 +4,24 @@ from api.dependencies import get_db
 from api.services.MatchingService import MatchingService
 import api.schemas.matchs as match_shema
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/matching",
+    tags=["Matching"],
+    responses={404: {"description": "Not found"}},
+)
 
-# ロビー作成エンドポイント
-@router.post("/matching/create_lobby", response_model=match_shema.CreateLobbyResponse)
+@router.post("/create_lobby", response_model=match_shema.CreateLobbyResponse)
 async def create_lobby(match_data: match_shema.MatchCreate, db: Session = Depends(get_db)):
+    """ドライバーのロビー作成エンドポイント
+    
+    Args:
+        match_data (match_shema.MatchCreate): ドライバーID、ドライバーの位置情報、目的地
+        db (Session, optional): データベースセッション. Defaults to Depends(get_db)
+    
+    Returns:
+        CreateLobbyResponse: ロビー作成の結果
+        処理成功 or 失敗(bool)、ロビーID(str)、ロビー情報(dict)、エラーメッセージ(str)
+    """
     matching_service = MatchingService(db)
     lobby = await matching_service.create_driver_lobby(
         driver_id=match_data.driver_id,
@@ -18,8 +31,18 @@ async def create_lobby(match_data: match_shema.MatchCreate, db: Session = Depend
     return lobby
 
 # ロビー参加エンドポイント
-@router.post("/matching/join_lobby", response_model=match_shema.JoinLobbyResponse)
+@router.post("/join_lobby", response_model=match_shema.JoinLobbyResponse)
 async def join_lobby(match_data: match_shema.MatchJoin, db: Session = Depends(get_db)):
+    """作成されたロビーに参加するエンドポイント
+
+    Args:
+        match_data (match_shema.MatchJoin): 乗客ID、乗客の位置情報、目的地
+        db (Session, optional): データベースセッション. Defaults to Depends(get_db)
+
+    Returns:
+        JoinLobbyResponse: ロビー参加の結果
+        処理成功 or 失敗(bool)、メッセージ、エラーメッセージ、ロビー情報、出発地までの距離、目的地までの距離
+    """
     matching_service = MatchingService(db)
     result = await matching_service.request_random_ride(
         passenger_id=match_data.passenger_id, 
@@ -29,8 +52,18 @@ async def join_lobby(match_data: match_shema.MatchJoin, db: Session = Depends(ge
     return result
 
 # ドライバー承認エンドポイント
-@router.post("/matching/approve_passenger", response_model=match_shema.ApprovePassengerResponse)
+@router.post("/approve_passenger", response_model=match_shema.ApprovePassengerResponse)
 async def driver_approve_passenger(approve_data: match_shema.ApproveDriverMatch, db: Session = Depends(get_db)):
+    """ドライバーが乗車者を承認するエンドポイント
+
+    Args:
+        approve_data (match_shema.ApproveDriverMatch): ドライバーID、ロビーID、乗車者ID
+        db (Session, optional): データベースセッション. Defaults to Depends(get_db).
+
+    Returns:
+        ApprovePassengerResponse: 承認の結果
+        処理成功 or 失敗(bool)、メッセージ、ステータスメッセージ
+    """
     matching_service = MatchingService(db)
     result = await matching_service.driver_approve_passenger(
         driver_id=approve_data.driver_id, 
@@ -40,8 +73,18 @@ async def driver_approve_passenger(approve_data: match_shema.ApproveDriverMatch,
     return result
 
 # 乗車者承認エンドポイント
-@router.post("/matching/approve_driver", response_model=match_shema.ApprovePassengerResponse)
+@router.post("/approve_driver", response_model=match_shema.ApprovePassengerResponse)
 async def passenger_approve_driver(approve_data: match_shema.ApprovePassengerMatch, db: Session = Depends(get_db)):
+    """乗車者がドライバーを承認するエンドポイント
+    
+    Args:
+        approve_data (match_shema.ApprovePassengerMatch): 乗車者ID、ロビーID
+        db (Session, optional): データベースセッション. Defaults to Depends(get_db).
+    
+    Returns:
+        ApprovePassengerResponse: 承認の結果
+        処理成功 or 失敗(bool)、メッセージ、ステータスメッセージ
+    """
     matching_service = MatchingService(db)
     result = await matching_service.passenger_approve_ride(
         passenger_id=approve_data.passenger_id, 
@@ -50,14 +93,31 @@ async def passenger_approve_driver(approve_data: match_shema.ApprovePassengerMat
     return result
 
 # ロビー一覧取得エンドポイント
-@router.get("/matching/get_all_lobby")
+@router.get("/get_all_lobby")
 async def get_all_lobby(db: Session = Depends(get_db)):
+    """ロビー一覧取得エンドポイント
+
+    Args:
+        db (Session, optional): データベースセッション. Defaults to Depends(get_db).
+
+    Returns:
+        dict: ロビー情報のリスト
+    """
     matching_service = MatchingService(db)
     result = await matching_service.get_all_lobbies()
     return result
 
-@router.get("/matching/get_lobby/{lobby_id}")
+@router.get("/get_lobby/{lobby_id}")
 async def get_lobby_info(lobby_id: str, db: Session = Depends(get_db)):
+    """ロビー情報取得エンドポイント
+
+    Args:
+        lobby_id (str): ロビーID
+        db (Session, optional): データベースセッション. Defaults to Depends(get_db).
+
+    Returns:
+        dict: ロビー情報
+    """
     matching_service = MatchingService(db)
     result = await matching_service.get_lobby_info(lobby_id)
     return result

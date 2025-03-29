@@ -353,6 +353,34 @@ class MatchingService:
                 "lobby": lobby.to_dict()
             }
     
+    async def request_random_ride(self, 
+                             passenger_id: int, 
+                             passenger_location: Tuple[float, float],
+                             passenger_destination: Optional[Tuple[float, float]] = None, 
+                             max_distance: float = 5.0) -> Dict[str, Any]:
+        """乗客が距離内のランダムなロビーに参加リクエスト（目的地の距離も考慮）"""
+        # まず、距離内のランダムなロビーを見つける
+        lobby_info = await self.find_random_lobby_by_distance(
+            passenger_id, 
+            passenger_location, 
+            passenger_destination,
+            max_distance
+        )
+        
+        if not lobby_info:
+            return {"success": False, "error": "距離内に利用可能なロビーが見つかりませんでした"}
+        
+        # 見つかったロビーにリクエスト
+        lobby_id = lobby_info["lobby"]["lobby_id"]
+        result = await self.request_ride(passenger_id, lobby_id)
+        
+        # 距離情報を追加
+        if result["success"]:
+            result["start_distance"] = lobby_info["start_distance"]
+            result["destination_distance"] = lobby_info["destination_distance"]
+        
+        return result
+
     async def cancel_ride_request(self, passenger_id: int, lobby_id: str = None) -> Dict[str, Any]:
         """乗車者がリクエストをキャンセル"""
         async with self.lock:
@@ -539,6 +567,20 @@ class MatchingService:
                 all_lobbies.append(lobby.to_dict())
             return all_lobbies
     
+    async def get_lobby_info(self, lobby_id: str) -> Dict[str, Any]:
+        """ロビーの詳細情報を取得"""
+        async with self.lock:
+            if lobby_id not in self.ride_lobbies:
+                return {"success": False, "error": "ロビーが存在しません"}
+            
+            lobby = self.ride_lobbies[lobby_id]
+            return {
+                "success": True,
+                "lobby": lobby.to_dict(),
+                "requests": lobby.get_passenger_requests()
+            }
+
+    
     async def _complete_matching(self, lobby: RideLobby) -> Match:
         """マッチングを完了してデータベースに保存"""
         # ロビーのステータスを更新
@@ -588,43 +630,19 @@ class MatchingService:
         print(f"DBにマッチを保存: {match.match_id}")
         return match
     
-    async def request_random_ride(self, 
-                             passenger_id: int, 
-                             passenger_location: Tuple[float, float],
-                             passenger_destination: Optional[Tuple[float, float]] = None, 
-                             max_distance: float = 5.0) -> Dict[str, Any]:
-        """乗客が距離内のランダムなロビーに参加リクエスト（目的地の距離も考慮）"""
-        # まず、距離内のランダムなロビーを見つける
-        lobby_info = await self.find_random_lobby_by_distance(
-            passenger_id, 
-            passenger_location, 
-            passenger_destination,
-            max_distance
-        )
-        
-        if not lobby_info:
-            return {"success": False, "error": "距離内に利用可能なロビーが見つかりませんでした"}
-        
-        # 見つかったロビーにリクエスト
-        lobby_id = lobby_info["lobby"]["lobby_id"]
-        result = await self.request_ride(passenger_id, lobby_id)
-        
-        # 距離情報を追加
-        if result["success"]:
-            result["start_distance"] = lobby_info["start_distance"]
-            result["destination_distance"] = lobby_info["destination_distance"]
-        
-        return result
-    
-    async def get_lobby_info(self, lobby_id: str) -> Dict[str, Any]:
-        """ロビーの詳細情報を取得"""
+    async def report_ride_completion(self, match_id: int) -> Dict[str, Any]:
+        """マッチング完了を報告"""
         async with self.lock:
-            if lobby_id not in self.ride_lobbies:
-                return {"success": False, "error": "ロビーが存在しません"}
+            # マッチの存在確認
+            match = self.db.query(Match).filter(Match.match_id == match_id).first() # マッチIDでフィルタリング
+            if not match:
+                return {"success": False, "error": "マッチが存在しません"}
             
-            lobby = self.ride_lobbies[lobby_id]
-            return {
-                "success": True,
-                "lobby": lobby.to_dict(),
-                "requests": lobby.get_passenger_requests()
-            }
+            # ステータスを更新
+            match.status = "Completed"
+            
+            # データベースに保存
+            self.db.commit()
+            self.db.refresh(match)
+            
+            return {"success": True, "message": "マッチングが完了しました"}
