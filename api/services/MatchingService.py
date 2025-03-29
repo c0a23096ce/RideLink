@@ -645,4 +645,4 @@ class MatchingService:
             self.db.commit()
             self.db.refresh(match)
             
-            return {"success": True, "message": "マッチングが完了しました"}
+            return {"success": True, "message": "ルート案内が完了しました", "match_id": match_id}
