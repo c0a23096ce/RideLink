@@ -127,3 +127,21 @@ GET /payments/{payment_id}/receipt（領収書発行）
 GET /admin/users（ユーザー一覧管理）
 GET /admin/statistics（統計情報）
 PUT /admin/system-settings（システム設定管理
+
+フロントプロジェクト構成例
+/src
+  /components         # 再利用可能なUI部品
+    /Header.jsx
+    /RideRequestForm.jsx
+    /Map.jsx
+  /pages              # 画面単位のコンポーネント
+    /Login.jsx
+    /DriverDashboard.jsx
+    /PassengerDashboard.jsx
+  /services           # APIとの通信
+    /authService.js
+    /matchingService.js
+  /store              # 状態管理
+  /utils              # ユーティリティ関数
+  App.jsx             # ルーティング設定
+  main.jsx            # エントリーポイント
