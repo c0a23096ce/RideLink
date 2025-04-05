@@ -73,6 +73,7 @@ class UserService:
         """
         # メールアドレスでユーザーを取得
         user = self.user_crud.get_user_by_email(email)
+        print(f"取得したユーザー: {user}")
         
         if not user:
             return None

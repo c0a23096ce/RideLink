@@ -43,34 +43,34 @@ async def register(
     
     return user
 
-@router.post("/login", response_model=Token)
-async def login(
-    user_data: UserLogin, 
-    db: Session = Depends(get_db)
-):
-    """ユーザーログインエンドポイント
-    Args:
-        user_data (UserLogin): メールアドレス、パスワード
-        db (Session, optional): データベースセッション. Defaults to Depends(get_db).
-    Returns:
-        Token: アクセストークン、トークンタイプ
-    """
-    user_service = UserService(db)
-    user = user_service.authenticate_user(
-        user_data.email, 
-        user_data.password
-    )
+# @router.post("/login", response_model=Token)
+# async def login(
+#     user_data: UserLogin, 
+#     db: Session = Depends(get_db)
+# ):
+#     """ユーザーログインエンドポイント
+#     Args:
+#         user_data (UserLogin): メールアドレス、パスワード
+#         db (Session, optional): データベースセッション. Defaults to Depends(get_db).
+#     Returns:
+#         Token: アクセストークン、トークンタイプ
+#     """
+#     user_service = UserService(db)
+#     user = user_service.authenticate_user(
+#         user_data.email, 
+#         user_data.password
+#     )
     
-    if user is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid credentials"
-        )
+#     if user is None:
+#         raise HTTPException(
+#             status_code=400,
+#             detail="Invalid credentials"
+#         )
     
-    access_token = user_service.create_access_token(data={"sub": user.email}) # emailをトークンに含める
-    return {"access_token": access_token, "token_type": "bearer"}
+#     access_token = user_service.create_access_token(data={"sub": user.email}) # emailをトークンに含める
+#     return {"access_token": access_token, "token_type": "bearer"}
 
-@router.post("/testlogin", response_model=Token)
+@router.post("/login", response_model=Token)
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(), 
     db: Session = Depends(get_db)
@@ -84,9 +84,13 @@ async def login(
     Returns:
         Token: アクセストークン、トークンタイプ 
     """
+    
+    print(f"Received username: {form_data.username}")
+    print(f"Received password: {form_data.password}")
+    
     user_service = UserService(db)
     user = user_service.authenticate_user(form_data.username, form_data.password)
-    if not user:
+    if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",

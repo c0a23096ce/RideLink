@@ -10,6 +10,7 @@ from api.services.UserService import UserService
 from api.schemas.users import User as UserSchema
 
 from dotenv import load_dotenv
+
 import os
 
 load_dotenv()
@@ -20,7 +21,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES")
 
 
 # OAuth2のトークンURLを設定
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/testlogin")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/user/login")
 
 def get_db() -> Generator:
     """

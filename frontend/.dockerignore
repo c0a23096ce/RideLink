@@ -1,0 +1,5 @@
+my-app/node_modules
+my-app/.next
+my-app/out
+my-app/.git
+my-app/.env

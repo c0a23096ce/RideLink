@@ -1,0 +1,20 @@
+# Node.jsの公式イメージを使用
+FROM node:18-alpine
+
+# 作業ディレクトリを設定
+WORKDIR /app
+
+# 必要なファイルをコピー
+COPY package.json yarn.lock ./
+
+# 依存関係をインストール
+RUN yarn install
+
+# ソースコードをコピー
+COPY . .
+
+# 実行権限を付与
+RUN chmod +x ./node_modules/.bin/next
+
+# デフォルトコマンド
+CMD ["yarn", "dev"]

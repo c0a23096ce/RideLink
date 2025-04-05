@@ -21,5 +21,21 @@ services:
     command: --default-authentication-plugin=mysql_native_password
     ports:
       - "33306:3306"
+
+  # 新しいフロントエンドサービス
+  frontend:
+    build: 
+      context: ./frontend/my-app
+      dockerfile: dockerfile
+    volumes:
+      - ./frontend/my-app:/app
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - WATCHPACK_POLLING=true
+    depends_on:
+      - demo-app
+
 volumes:
   db-data:
