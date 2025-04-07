@@ -28,6 +28,7 @@ async def create_lobby(match_data: match_shema.MatchCreate, db: Session = Depend
         starting_location=match_data.driver_location,
         destination=match_data.destination,
     )
+    print(lobby)
     return lobby
 
 @router.get("/lobbies")
@@ -77,6 +78,7 @@ async def join_lobby(match_data: match_shema.MatchJoin, db: Session = Depends(ge
         passenger_location=match_data.passenger_location,
         passenger_destination=match_data.passenger_destination
         )
+    print(result)
     return result
 
 @router.post("/lobbies/{lobby_id}/approvals/passenger/{passenger_id}", response_model=match_shema.ApprovePassengerResponse)

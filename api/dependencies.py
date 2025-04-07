@@ -39,7 +39,7 @@ def get_token_data(token: str = Depends(oauth2_scheme)) -> TokenData:
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+        detail="資格情報を検証できませんでした",
         headers={"WWW-Authenticate": "Bearer"},
     )
     
