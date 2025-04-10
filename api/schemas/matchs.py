@@ -19,12 +19,9 @@ class MatchJoin(BaseModel):
     passenger_location: Tuple[float, float] = Field(..., example=(35.681236, 139.767125))
     passenger_destination: Tuple[float, float] = Field(..., example=(35.681236, 139.767125))
 
-class ApprovePassengerMatch(BaseModel):
-    passenger_id: int = Field(..., example=1)
+class ApproveLobby(BaseModel):
+    user_id: int = Field(..., example=1)
     lobby_id: str = Field(..., example="123e4567-e89b-12d3-a456-426614174000")
-
-class ApproveDriverMatch(ApprovePassengerMatch):
-    driver_id: int = Field(..., example=1)
     
 
 class CreateLobbyResponse(BaseModel):

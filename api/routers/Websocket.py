@@ -1,36 +1,27 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from sqlalchemy.orm import Session
-from api.dependencies import get_db
+from typing import Dict
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from api.services.MatchingService import MatchingService
 
-router = APIRouter(prefix="/ws", tags=["websocket"])
+# APIRouterを作成
+router = APIRouter()
 
-@router.websocket("/match/{player_id}")
-async def websocket_endpoint(websocket: WebSocket, player_id: int, db: Session = Depends(get_db)):
-    matching_service = MatchingService(db)
+# MatchingServiceのインスタンスを取得
+matching_service = MatchingService()
+
+@router.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket, user_id: int):
+    # WebSocket接続を受け入れる
     await websocket.accept()
     
-    # WebSocket接続を登録
-    await matching_service.register_connection(player_id, websocket)
+    # MatchingServiceに接続を登録
+    await matching_service.register_connection(user_id, websocket)
     
     try:
         while True:
-            # WebSocketからのメッセージ待機
-            data = await websocket.receive_json() # メッセージが受信されるまで待機
-            # メッセージの種類に応じた処理
-            if data.get("type") == "join_pool":
-                await matching_service.add_player_to_pool(
-                    player_id=player_id,
-                    skill_level=data.get("skill_level", 1000),
-                    preferences=data.get("preferences", {}),
-                    location=data.get("location")
-                )
-            elif data.get("type") == "confirm_match":
-                match_id = data.get("match_id")
-                if match_id:
-                    await matching_service.confirm_match(match_id, player_id)
+            # クライアントからのメッセージを受信
+            data = await websocket.receive_text()
+            print(f"Received from {user_id}: {data}")
     except WebSocketDisconnect:
-        print(f"Client #{player_id} disconnected")
-    finally:
-        # 接続解除処理
-        await matching_service.unregister_connection(player_id)
+        # クライアントが切断した場合、MatchingServiceから接続を解除
+        await matching_service.unregister_connection(user_id)
+        print(f"User {user_id} disconnected")

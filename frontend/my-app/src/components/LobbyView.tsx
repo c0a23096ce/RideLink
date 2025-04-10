@@ -44,6 +44,26 @@ export default function LobbyView({ onCreateLobby, onJoinLobby }: {
     fetchUser();
   }, []);
 
+  useEffect(() => {
+    const socket = new WebSocket('ws://localhost:8000/ws?user_id=2'); // 仮のユーザーID
+    socket.onopen = () => {
+      console.log('WebSocket接続が確立されました');
+    };
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      console.log('WebSocketメッセージ受信:', data); // 追加
+      if (data.type === 'lobby_full') {
+        alert(data.message);
+        router.push(`/lobbies/${data.lobby_id}/approved`);
+      }
+    };
+
+    return () => {
+      socket.close();
+      console.log('WebSocket接続が閉じられました');
+    };
+  }, []);
+
   const handleGeolocate = () => {
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -84,9 +104,14 @@ export default function LobbyView({ onCreateLobby, onJoinLobby }: {
           passenger_location: [origin[0], origin[1]],
           passenger_destination: [destination[0], destination[1]],
         });
-        alert('ロビーに参加しました');
+        if (lobby.data && lobby.data.error) {
+          alert(lobby.data.error); // エラーメッセージを表示
+        } else {
+          alert('ロビーに参加しました'); // 正常時のメッセージ
+        }
         console.log(lobby);
-        router.push(`/lobbies/${lobby.data.lobby.lobby_id}`);
+
+        // WebSocketで通知を待つため、ここでは画面遷移を行わない
       } else {
         const lobby = await apiClient.post('/matching/lobbies', {
           driver_id: 1, // 仮のユーザーID
@@ -94,7 +119,6 @@ export default function LobbyView({ onCreateLobby, onJoinLobby }: {
           destination: [destination[0], destination[1]]
         });
         alert('ロビーを作成しました');
-        router.push(`/lobbies/${lobby.data.lobby_id}`);
       }
       setOpenMap(false);
     } catch (err) {

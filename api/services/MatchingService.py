@@ -27,6 +27,11 @@ class LobbyStatus:
     COMPLETED = "completed"  # マッチング完了
     CLOSED = "closed"        # 閉鎖済み
 
+class ApproveStatus:
+    """ロビーのステータスを定義する定数"""
+    PENDING = "pending"      # 申請中
+    APPROVED = "approved"  # 承認済み
+
 class RideLobby:
     """ドライバーが作成するロビー"""
     def __init__(self, 
@@ -51,19 +56,22 @@ class RideLobby:
         # 参加リクエスト管理: {passenger_id: {"status": status, "timestamp": time}}
         self.requests: Dict[int, Dict[str, Any]] = {}
         
-        # 確定した乗客リスト（双方が承認したもの）
-        self.confirmed_passengers: Set[int] = set()
+        # # 確定した乗客リスト（双方が承認したもの）
+        # self.requests: Set[int] = set()
         
-        # ドライバーが承認した乗客リスト
-        self.driver_approved: Set[int] = set()
+        # # ドライバーが承認した乗客リスト
+        # self.driver_approved: Set[int] = set()
         
-        # 乗客が承認したリスト
-        self.passenger_approved: Set[int] = set()
+        # # 乗客が承認したリスト
+        # self.passenger_approved: Set[int] = set()
+        
+        # リクエストを承認したユーザーの辞書
+        self.approve_status: Dict[int, str] = {driver_id: ApproveStatus.PENDING}
 
     def add_request(self, passenger_id: int) -> bool:
         """乗車リクエストを追加"""
         # すでに満員の場合は拒否
-        if len(self.confirmed_passengers) >= self.max_passengers:
+        if len(self.requests) >= self.max_passengers:
             return False
             
         # すでにリクエスト済みの場合
@@ -77,41 +85,61 @@ class RideLobby:
         }
         return True
     
-    def driver_approve(self, passenger_id: int) -> bool:
-        """ドライバーが乗客を承認"""
-        # リクエストが存在しない場合は失敗
-        if passenger_id not in self.requests:
-            return False
+    # def driver_approve(self, passenger_id: int) -> bool:
+    #     """ドライバーが乗客を承認"""
+    #     # リクエストが存在しない場合は失敗
+    #     if passenger_id not in self.requests:
+    #         return False
         
-        # ドライバー承認リストに追加
-        self.driver_approved.add(passenger_id)
+    #     # ドライバー承認リストに追加
+    #     self.driver_approved.add(passenger_id)
         
-        # 片方がすでに承認している場合は確定
-        if passenger_id in self.passenger_approved:
-            self.confirmed_passengers.add(passenger_id)
-            self.requests[passenger_id]["status"] = RequestStatus.CONFIRMED
+    #     # 片方がすでに承認している場合は確定
+    #     if passenger_id in self.passenger_approved:
+    #         self.requests.add(passenger_id)
+    #         self.requests[passenger_id]["status"] = RequestStatus.CONFIRMED
             
-        return True
+    #     return True
     
-    def passenger_approve(self, passenger_id: int) -> bool:
-        """乗客が乗車を承認"""
-        if passenger_id not in self.requests:
-            return False
+    # def passenger_approve(self, passenger_id: int) -> bool:
+    #     """乗客が乗車を承認"""
+    #     if passenger_id not in self.requests:
+    #         return False
         
-        # 乗客承認リストに追加
-        self.passenger_approved.add(passenger_id)
+    #     # 乗客承認リストに追加
+    #     self.passenger_approved.add(passenger_id)
         
-        # 片方がすでに承認している場合は確定
-        if passenger_id in self.driver_approved:
-            self.confirmed_passengers.add(passenger_id)
-            self.requests[passenger_id]["status"] = RequestStatus.CONFIRMED
+    #     # 片方がすでに承認している場合は確定
+    #     if passenger_id in self.driver_approved:
+    #         self.requests.add(passenger_id)
+    #         self.requests[passenger_id]["status"] = RequestStatus.CONFIRMED
             
-        return True
+    #     return True
+    
+    
+    # def approve_ride(self, user_id: int) -> bool:
+    #     """乗車を承認"""
+    #     # リクエストが存在しない場合は失敗
+    #     if user_id not in self.requests:
+    #         return False
+        
+    #     # 承認リストに追加
+    #     if self.driver_id == user_id:
+    #         self.driver_approved.add(user_id)
+    #     else:
+    #         self.passenger_approved.add(user_id)
+        
+    #     # 片方がすでに承認している場合は確定
+    #     if user_id in self.driver_approved or user_id in self.passenger_approved:
+    #         self.requests.add(user_id)
+    #         self.requests[user_id]["status"] = RequestStatus.CONFIRMED
+            
+    #     return True
         
     def is_full(self) -> bool:
         """ロビーが満員かどうか"""
-        print(f"ロビー内の乗客数: {len(self.confirmed_passengers)}, 最大乗客数: {self.max_passengers}")
-        return len(self.confirmed_passengers) >= self.max_passengers
+        print(f"ロビー内の乗客数: {len(self.requests)}, 最大乗客数: {self.max_passengers}")
+        return len(self.requests) >= self.max_passengers
         
     def to_dict(self) -> Dict[str, Any]:
         """ロビー情報を辞書に変換"""
@@ -122,22 +150,34 @@ class RideLobby:
             "destination": self.destination,
             "max_distance": self.max_distance,
             "max_passengers": self.max_passengers,
-            "current_passengers": len(self.confirmed_passengers),
+            "current_passengers": len(self.requests),
             "status": self.status,
             "created_at": self.created_at,
             "preferences": self.preferences
         }
     
-    def get_passenger_requests(self) -> Dict[int, Dict[str, Any]]:
-        """全リクエスト情報を取得"""
-        result = {}
-        for passenger_id, request_data in self.requests.items():
-            result[passenger_id] = request_data.copy()
-            # 各種承認状態をTrue/Falseで追加
-            result[passenger_id]["driver_approved"] = passenger_id in self.driver_approved # ドライバーが承認済みか
-            result[passenger_id]["passenger_approved"] = passenger_id in self.passenger_approved # 乗客が承認済みか
-            result[passenger_id]["confirmed"] = passenger_id in self.confirmed_passengers # 双方承認済みか
-        return result
+    def add_approve_status(self, user_id: int) -> bool:
+        """承認状況を追加"""
+        if user_id in self.approve_status:
+            return False
+        
+        self.approve_status[user_id] = ApproveStatus.PENDING
+        return True
+    
+    def get_approve_status(self) -> Dict[int, str]:
+        """承認状況を取得"""
+        return all(value == ApproveStatus.APPROVED for value in self.approve_status.values())
+    
+    # def get_passenger_requests(self) -> Dict[int, Dict[str, Any]]:
+    #     """全リクエスト情報を取得"""
+    #     result = {}
+    #     for passenger_id, request_data in self.requests.items():
+    #         result[passenger_id] = request_data.copy()
+    #         # 各種承認状態をTrue/Falseで追加
+    #         result[passenger_id]["driver_approved"] = passenger_id in self.driver_approved # ドライバーが承認済みか
+    #         result[passenger_id]["passenger_approved"] = passenger_id in self.passenger_approved # 乗客が承認済みか
+    #         result[passenger_id]["confirmed"] = passenger_id in self.requests # 双方承認済みか
+    #     return result
 
 class MatchingService:
     _instance = None
@@ -151,19 +191,22 @@ class MatchingService:
     def __init__(self, db=None):
         if not self._initialized:
             self.db = db
-            self.ride_lobbies = {}
-            self.user_lobbies = {}
+            self.ride_lobbies = {} # ロビーIDとロビーの対応
+            self.user_lobbies = {} # ユーザーIDとロビーIDの対応
             self._initialized = True
+            self.active_connections: Dict[int, WebSocket] = {}  # ユーザーIDとWebSocketの対応
+            self.user_roles: Dict[int, str] = {}  # ユーザーID: 役割(driver/passenger)
+
         elif db is not None:
             self.db = db  # DBオブジェクトは常に更新
 
-        self.active_connections: Dict[int, WebSocket] = {}  # ユーザーIDとWebSocketの対応
-        self.user_roles: Dict[int, str] = {}  # ユーザーID: 役割(driver/passenger)
         self.lock = asyncio.Lock()  # 排他制御用ロック
         
     async def register_connection(self, user_id: int, websocket: WebSocket):
         """WebSocket接続を登録"""
         self.active_connections[user_id] = websocket
+        print(f"User {user_id}を接続しました")
+        print(f"現在の接続: {self.active_connections}")
         
     async def unregister_connection(self, user_id: int):
         """WebSocket接続を解除"""
@@ -214,8 +257,8 @@ class MatchingService:
             
             # ロビーを登録
             self.ride_lobbies[lobby_id] = lobby
-            self.user_lobbies[driver_id] = lobby_id
-            self.user_roles[driver_id] = UserRole.DRIVER
+            self.user_lobbies[driver_id] = lobby_id # ドライバーが所属するロビーを登録
+            self.user_roles[driver_id] = UserRole.DRIVER # ドライバーの役割を登録
             
             return {
                 "success": True,
@@ -339,16 +382,20 @@ class MatchingService:
             self.user_lobbies[passenger_id] = lobby_id
             self.user_roles[passenger_id] = UserRole.PASSENGER
             
-            # ドライバーに通知
-            if lobby.driver_id in self.active_connections:
-                await self.active_connections[lobby.driver_id].send_json({
-                    "type": "new_ride_request",
-                    "lobby_id": lobby_id,
-                    "passenger_id": passenger_id
-                })
+            
+            # # ドライバーに通知
+            # if lobby.driver_id in self.active_connections:
+            #     await self.active_connections[lobby.driver_id].send_json({
+            #         "type": "new_ride_request",
+            #         "lobby_id": lobby_id,
+            #         "passenger_id": passenger_id
+            #     })
+            
+            isfull = lobby.is_full()
             
             return {
                 "success": True,
+                "isfull": isfull,
                 "message": "乗車リクエストを送信しました",
                 "lobby": lobby.to_dict()
             }
@@ -374,10 +421,30 @@ class MatchingService:
         lobby_id = lobby_info["lobby"]["lobby_id"]
         result = await self.request_ride(passenger_id, lobby_id)
         
+        print(f"ロビー情報: {result}")
+        
+        self.ride_lobbies[lobby_id].add_approve_status(passenger_id)
+        
         # 距離情報を追加
         if result["success"]:
             result["start_distance"] = lobby_info["start_distance"]
             result["destination_distance"] = lobby_info["destination_distance"]
+        
+        
+        # ロビーが満員になった場合、WebSocketで通知
+        if result["isfull"]:
+            print("ロビーが満員になりました")
+            lobby = self.ride_lobbies[lobby_id]
+            participants = [lobby.driver_id] + list(lobby.requests.keys())
+            print(f"active_connections: {self.active_connections}")
+            # 全参加者に通知
+            for user_id in participants:
+                if user_id in self.active_connections:
+                    await self.active_connections[user_id].send_json({
+                        "type": "lobby_full",
+                        "lobby_id": lobby_id,
+                        "message": "ロビーが満員になりました。マッチングが確定しました。",
+                    })
         
         return result
 
@@ -401,7 +468,7 @@ class MatchingService:
                 return {"success": False, "error": "リクエストが存在しません"}
             
             # 確定済みの場合はキャンセル不可
-            if passenger_id in lobby.confirmed_passengers:
+            if passenger_id in lobby.requests:
                 return {"success": False, "error": "確定済みのリクエストはキャンセルできません"}
             
             # リクエストを削除
@@ -419,101 +486,123 @@ class MatchingService:
             if passenger_id in self.user_roles:
                 del self.user_roles[passenger_id]
             
-            # ドライバーに通知
-            if lobby.driver_id in self.active_connections:
-                await self.active_connections[lobby.driver_id].send_json({
-                    "type": "ride_request_cancelled",
-                    "lobby_id": lobby_id,
-                    "passenger_id": passenger_id
-                })
+            # # ドライバーに通知
+            # if lobby.driver_id in self.active_connections:
+            #     await self.active_connections[lobby.driver_id].send_json({
+            #         "type": "ride_request_cancelled",
+            #         "lobby_id": lobby_id,
+            #         "passenger_id": passenger_id
+            #     })
             
             return {"success": True, "message": "リクエストをキャンセルしました"}
     
-    async def driver_approve_passenger(self, driver_id: int, lobby_id: str, passenger_id: int) -> Dict[str, Any]:
-        """ドライバーが乗客を承認"""
-        async with self.lock:
-            # ロビーの存在確認
-            if lobby_id not in self.ride_lobbies:
-                return {"success": False, "error": "ロビーが存在しません"}
+    # async def driver_approve_passenger(self, driver_id: int, lobby_id: str, passenger_id: int) -> Dict[str, Any]:
+    #     """ドライバーが乗客を承認"""
+    #     async with self.lock:
+    #         # ロビーの存在確認
+    #         if lobby_id not in self.ride_lobbies:
+    #             return {"success": False, "error": "ロビーが存在しません"}
             
-            lobby = self.ride_lobbies[lobby_id]
+    #         lobby = self.ride_lobbies[lobby_id]
             
-            # 権限チェック
-            if lobby.driver_id != driver_id:
-                return {"success": False, "error": "権限がありません"}
+    #         # 権限チェック
+    #         if lobby.driver_id != driver_id:
+    #             return {"success": False, "error": "権限がありません"}
             
-            # リクエストの存在確認
-            if passenger_id not in lobby.requests:
-                return {"success": False, "error": "リクエストが存在しません"}
+    #         # リクエストの存在確認
+    #         if passenger_id not in lobby.requests:
+    #             return {"success": False, "error": "リクエストが存在しません"}
             
-            # 承認処理
-            if not lobby.driver_approve(passenger_id):
-                return {"success": False, "error": "承認に失敗しました"}
+    #         # 承認処理
+    #         if not lobby.driver_approve(passenger_id):
+    #             return {"success": False, "error": "承認に失敗しました"}
             
-            # 双方承認済みかどうか
-            is_confirmed = passenger_id in lobby.confirmed_passengers
+    #         # 双方承認済みかどうか
+    #         is_confirmed = passenger_id in lobby.requests
             
-            # 乗客に通知
-            if passenger_id in self.active_connections:
-                await self.active_connections[passenger_id].send_json({
-                    "type": "driver_approved",
-                    "lobby_id": lobby_id,
-                    "confirmed": is_confirmed,
-                    "message": "ドライバーがあなたの乗車を承認しました" + 
-                              ("。マッチングが確定しました。" if is_confirmed else "。あなたの承認が必要です。")
-                })
+    #         # 乗客に通知
+    #         if passenger_id in self.active_connections:
+    #             await self.active_connections[passenger_id].send_json({
+    #                 "type": "driver_approved",
+    #                 "lobby_id": lobby_id,
+    #                 "confirmed": is_confirmed,
+    #                 "message": "ドライバーがあなたの乗車を承認しました" + 
+    #                           ("。マッチングが確定しました。" if is_confirmed else "。あなたの承認が必要です。")
+    #             })
             
-            # マッチング成立の場合はデータベースに保存
-            if is_confirmed and lobby.is_full():
-                await self._complete_matching(lobby)
+    #         # マッチング成立の場合はデータベースに保存
+    #         if is_confirmed and lobby.is_full():
+    #             await self._complete_matching(lobby)
             
-            return {
-                "success": True,
-                "message": "乗客を承認しました" + ("。マッチングが確定しました。" if is_confirmed else ""),
-                "confirmed": RequestStatus.CONFIRMED if is_confirmed else RequestStatus.PENDING
-            }
+    #         return {
+    #             "success": True,
+    #             "message": "乗客を承認しました" + ("。マッチングが確定しました。" if is_confirmed else ""),
+    #             "confirmed": RequestStatus.CONFIRMED if is_confirmed else RequestStatus.PENDING
+    #         }
     
-    async def passenger_approve_ride(self, passenger_id: int, lobby_id: str) -> Dict[str, Any]:
-        """乗客が乗車を承認"""
+    # async def passenger_approve_ride(self, passenger_id: int, lobby_id: str) -> Dict[str, Any]:
+    #     """乗客が乗車を承認"""
+    #     async with self.lock:
+    #         # ロビーの存在確認
+    #         if lobby_id not in self.ride_lobbies:
+    #             return {"success": False, "error": "ロビーが存在しません"}
+            
+    #         lobby = self.ride_lobbies[lobby_id]
+            
+    #         # 権限とステータスチェック
+    #         if passenger_id not in lobby.requests:
+    #             return {"success": False, "error": "リクエストが存在しません"}
+            
+    #         # 承認処理
+    #         if not lobby.passenger_approve(passenger_id):
+    #             return {"success": False, "error": "承認に失敗しました"}
+            
+    #         # 双方承認済みかどうか
+    #         is_confirmed = passenger_id in lobby.requests
+            
+    #         # ドライバーに通知
+    #         if lobby.driver_id in self.active_connections:
+    #             await self.active_connections[lobby.driver_id].send_json({
+    #                 "type": "passenger_approved",
+    #                 "lobby_id": lobby_id,
+    #                 "passenger_id": passenger_id,
+    #                 "confirmed": is_confirmed,
+    #                 "message": "乗客が乗車を承認しました" + 
+    #                           ("。マッチングが確定しました。" if is_confirmed else "。あなたの承認が必要です。")
+    #             })
+            
+    #         # マッチング成立の場合はデータベースに保存
+    #         if is_confirmed and lobby.is_full():
+    #             await self._complete_matching(lobby)
+            
+    #         return {
+    #             "success": True,
+    #             "message": "乗車を承認しました" + ("。マッチングが確定しました。" if is_confirmed else ""),
+    #             "confirmed": RequestStatus.CONFIRMED if is_confirmed else RequestStatus.PENDING
+    #         }
+    
+    async def approve_ride(self, user_id: int, lobby_id: str):
+        """マッチングした人を承認する"""
         async with self.lock:
-            # ロビーの存在確認
+        # ロビーの存在確認
             if lobby_id not in self.ride_lobbies:
                 return {"success": False, "error": "ロビーが存在しません"}
             
             lobby = self.ride_lobbies[lobby_id]
             
             # 権限とステータスチェック
-            if passenger_id not in lobby.requests:
+            if user_id not in lobby.requests:
                 return {"success": False, "error": "リクエストが存在しません"}
             
             # 承認処理
-            if not lobby.passenger_approve(passenger_id):
-                return {"success": False, "error": "承認に失敗しました"}
+            self.ride_lobbies[lobby_id].approve_status[user_id] = ApproveStatus.APPROVED
             
             # 双方承認済みかどうか
-            is_confirmed = passenger_id in lobby.confirmed_passengers
+            is_confirmed = lobby.get_approve_status()
+            print(f"承認状況: {lobby.get_approve_status()}")
             
-            # ドライバーに通知
-            if lobby.driver_id in self.active_connections:
-                await self.active_connections[lobby.driver_id].send_json({
-                    "type": "passenger_approved",
-                    "lobby_id": lobby_id,
-                    "passenger_id": passenger_id,
-                    "confirmed": is_confirmed,
-                    "message": "乗客が乗車を承認しました" + 
-                              ("。マッチングが確定しました。" if is_confirmed else "。あなたの承認が必要です。")
-                })
-            
-            # マッチング成立の場合はデータベースに保存
-            if is_confirmed and lobby.is_full():
-                await self._complete_matching(lobby)
-            
-            return {
-                "success": True,
-                "message": "乗車を承認しました" + ("。マッチングが確定しました。" if is_confirmed else ""),
-                "confirmed": RequestStatus.CONFIRMED if is_confirmed else RequestStatus.PENDING
-            }
-    
+            return is_confirmed
+
     async def get_lobby_requests(self, driver_id: int, lobby_id: str) -> Dict[str, Any]:
         """ドライバーがロビーのリクエスト一覧を取得"""
         async with self.lock:
@@ -534,7 +623,7 @@ class MatchingService:
                 "success": True,
                 "lobby_id": lobby_id,
                 "requests": requests,
-                "confirmed_passengers": list(lobby.confirmed_passengers)
+                "requests": list(lobby.requests)
             }
     
     async def get_available_lobbies(self, passenger_location: Tuple[float, float], max_distance: float = 5.0) -> List[Dict[str, Any]]:
@@ -579,12 +668,19 @@ class MatchingService:
                 "lobby": lobby.to_dict(),
                 "requests": lobby.get_passenger_requests()
             }
-
+    
+    def get_lobby_users(self, lobby_id: str) -> List[int]:
+        """ロビーに参加しているユーザーのIDを取得"""
+        if lobby_id not in self.ride_lobbies:
+            return []
+        
+        lobby = self.ride_lobbies[lobby_id]
+        return [lobby.driver_id] + list(lobby.requests.keys())
     
     async def _complete_matching(self, lobby: RideLobby) -> Match:
         """マッチングを完了してデータベースに保存"""
         # ロビーのステータスを更新
-        print(f"マッチング完了: {lobby.lobby_id} - 参加者: {lobby.confirmed_passengers}")
+        print(f"マッチング完了: {lobby.lobby_id} - 参加者: {lobby.requests}")
         lobby.status = LobbyStatus.COMPLETED
         
         # データベースにマッチを作成
@@ -595,7 +691,7 @@ class MatchingService:
         self.db.add(match)
         
         # 乗車者情報をデータベースに保存
-        for passenger_id in lobby.confirmed_passengers:
+        for passenger_id in lobby.requests:
             passenger = MatchPassenger(
                 match_id=match.match_id,
                 passenger_id=passenger_id
@@ -604,7 +700,7 @@ class MatchingService:
             
             
         # 参加者全員に通知
-        match_participants = [lobby.driver_id] + list(lobby.confirmed_passengers)
+        match_participants = [lobby.driver_id] + list(lobby.requests)
         
         for user_id in match_participants:
             # WebSocketで通知
