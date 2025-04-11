@@ -1,8 +1,10 @@
 // src/app/layout.tsx
 'use client';
+
 import { ReactNode } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import { WebSocketProvider } from '@/contexts/WebSocketContext';
 
 const darkTheme = createTheme({
   palette: {
@@ -17,11 +19,13 @@ const darkTheme = createTheme({
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="ja">
       <body>
         <ThemeProvider theme={darkTheme}>
           <CssBaseline />
-          {children}
+          <WebSocketProvider>
+            {children}
+          </WebSocketProvider>
         </ThemeProvider>
       </body>
     </html>

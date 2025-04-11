@@ -1,153 +1,134 @@
-import requests
-from typing import Dict, List, Tuple, Any, Optional
+from ortools.constraint_solver import routing_enums_pb2
+from ortools.constraint_solver import pywrapcp
+from typing import List, Tuple, Optional
+import httpx
+
 
 class RouteGenerateService:
-    """
-    経路生成サービスクラス
-    ドライバーと乗客の位置情報に基づいて最適な経路を計算する
-    """
-    
-    def __init__(self, db=None, config=None):
-        """
-        RouteGenerateServiceの初期化
-        
-        Args:
-            db: データベース接続（必要な場合）
-            config: 設定情報（APIキーなどを含む辞書）
-        """
-        self.db = db
-        self.config = config or {}
-        self.osrm_base_url = self.config.get(
-            "osrm_url", 
-            "http://router.project-osrm.org/route/v1/driving"
-        )
-        self.avg_speed_kmh = self.config.get("avg_speed_kmh", 40)  # デフォルトの平均速度: 40km/h
-    
-    def route_generate(
+    def __init__(
         self,
-        driver_location: Tuple[float, float],
-        passenger_location: Tuple[float, float], 
-        driver_destination: Tuple[float, float],
-        passenger_destination: Tuple[float, float]
-    ) -> Dict[str, Any]:
+        api_key: str, # MapboxのAPIキー
+        coordinates: List[Tuple[float, float]], # 各地点の (latitude, longitude) のリスト
+        pickups_deliveries: List[Tuple[int, int]], # 拾い上げる地点と降ろす地点のインデックスのリスト
+        start_index: int, # ドライバーの開始地点のインデックス
+        end_index: int # ドライバーの目的地のインデックス
+    ):
         """
-        ドライバーと乗車者の位置情報および目的地を元に最適なルートを生成する
-        
-        Args:
-            driver_location: ドライバーの現在位置 (緯度, 経度)
-            passenger_location: 乗車者の現在位置 (緯度, 経度)
-            driver_destination: ドライバーの目的地 (緯度, 経度)
-            passenger_destination: 乗車者の目的地 (緯度, 経度)
-            
-        Returns:
-            ルート情報を含む辞書
+        :param api_key: MapboxのAPIキー
+        :param coordinates: 各地点の (latitude, longitude) のリスト
+        :param pickups_deliveries: [(pickup_index, dropoff_index), ...]
+        :param start_index: ドライバーの開始地点のインデックス
+        :param end_index: ドライバーの目的地のインデックス
         """
-        # 1. ドライバーから乗車者までのルート取得
-        pickup_route = self.get_route(driver_location, passenger_location)
-        
-        # 2. 乗車後のルート計画
-        # 2-1. パターン1: 乗車者の目的地を先に訪問
-        route_option1 = self.get_route(passenger_location, passenger_destination) # 乗車者の目的地までのルート
-        route_option1_part2 = self.get_route(passenger_destination, driver_destination) # ドライバーの目的地までのルート
-        total_distance1 = pickup_route["distance"] + route_option1["distance"] + route_option1_part2["distance"]
-        total_duration1 = pickup_route["duration"] + route_option1["duration"] + route_option1_part2["duration"]
-        
-        # 乗車者の目的地を先に訪問するルート
-        complete_route = {
-            "segments": [
-                {
-                    "type": "to_passenger",
-                    "route": pickup_route, # ドライバーから乗車者までのルート
-                    "start": driver_location,
-                    "end": passenger_location
-                },
-                {
-                    "type": "to_passenger_destination",
-                    "route": route_option1, # 乗車者の目的地までのルート
-                    "start": passenger_location,
-                    "end": passenger_destination
-                },
-                {
-                    "type": "to_driver_destination",
-                    "route": route_option1_part2, # 乗車者の目的地からドライバーの目的地までのルート
-                    "start": passenger_destination,
-                    "end": driver_destination
-                }
-            ],
-            "total_distance": total_distance1,
-            "total_duration": total_duration1,
-            "route_order": ["passenger_pickup", "passenger_destination", "driver_destination"]
-        }
-        
-        return complete_route
+        self.api_key = api_key
+        self.coordinates = coordinates
+        self.pickups_deliveries = pickups_deliveries
+        self.start_index = start_index
+        self.end_index = end_index
 
-    def get_route(self, origin: Tuple[float, float], destination: Tuple[float, float]) -> Dict[str, Any]:
+    async def build_distance_matrix(self) -> List[List[int]]:
         """
-        2つの位置座標の間の経路情報を取得する（OSRM使用）
-        
-        Args:
-            origin: 出発地点の座標 (緯度, 経度)
-            destination: 目的地の座標 (緯度, 経度)
-            
-        Returns:
-            経路情報を含む辞書
+        Mapbox Matrix APIを使用して、地点間の距離行列を作成
         """
-        try:
-            # OSRM APIにリクエスト
-            url = f"{self.osrm_base_url}/{origin[1]},{origin[0]};{destination[1]},{destination[0]}"
-            params = {
-                "overview": "full",
-                "geometries": "geojson"
-            }
-            
-            response = requests.get(url, params=params)
+        coord_str = ";".join([f"{lon},{lat}" for lat, lon in self.coordinates])
+        url = f"https://api.mapbox.com/directions-matrix/v1/mapbox/driving/{coord_str}"
+        params = {
+            "access_token": self.api_key
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
             data = response.json()
-            
-            # APIのレスポンスをチェック
-            if data["code"] != "Ok":
-                print(f"OSRM API Error: {data['code']}")
-                return self.generate_mock_route_data(origin, destination)
-            
-            # レスポンスからルート情報を抽出
-            route = data["routes"][0]
-            leg = route["legs"][0]
-            
-            return {
-                "distance": leg["distance"],  # メートル単位
-                "duration": leg["duration"],  # 秒単位
-                "geometry": route["geometry"],
-                "waypoints": [
-                    {"location": [origin[1], origin[0]], "name": "Start"},
-                    {"location": [destination[1], destination[0]], "name": "End"}
-                ]
-            }
-            
-        except Exception as e:
-            print(f"OSRM APIリクエスト中にエラーが発生しました: {e}")
-            return self.generate_mock_route_data(origin, destination)
 
-    def generate_mock_route_data(self, origin: Tuple[float, float], destination: Tuple[float, float]) -> Dict[str, Any]:
-        """APIが使用できない場合にモックデータを生成"""
+        return data["distances"]
+
+    def create_data_model(self, distance_matrix: List[List[int]]) -> dict:
         return {
-            "distance": self.calculate_mock_distance(origin, destination),  # メートル単位
-            "duration": self.calculate_mock_duration(origin, destination),  # 秒単位
-            "geometry": {
-                "coordinates": [[origin[1], origin[0]], [destination[1], destination[0]]],
-                "type": "LineString"
-            },
-            "waypoints": []
+            "distance_matrix": distance_matrix,
+            "pickups_deliveries": self.pickups_deliveries,
+            "starts": [self.start_index],
+            "ends": [self.end_index]
         }
 
-    def calculate_mock_distance(self, point1: Tuple[float, float], point2: Tuple[float, float]) -> float:
-        """簡易的な距離計算（実際の実装ではより正確な方法を使用してください）"""
-        import math
-        lat1, lon1 = point1
-        lat2, lon2 = point2
-        # 簡易的な直線距離計算
-        return math.sqrt((lat2 - lat1)**2 + (lon2 - lon1)**2) * 111000  # 緯度経度1度あたり約111kmとして概算
+    def solve_route_order(self, distance_matrix: List[List[int]]) -> Optional[List[int]]:
+        """
+        OR-Tools を使って訪問順序を計算する（pickup → dropoff の制約付き）
+        """
+        data = self.create_data_model(distance_matrix)
 
-    def calculate_mock_duration(self, point1: Tuple[float, float], point2: Tuple[float, float]) -> float:
-        """簡易的な所要時間計算（距離から推定、平均速度設定に基づく）"""
-        distance = self.calculate_mock_distance(point1, point2)
-        avg_speed_mps = self.avg_speed_kmh * 1000 / 3600  # km/hをm/sに変換
-        return distance / avg_speed_mps  # 秒単位
+        manager = pywrapcp.RoutingIndexManager(
+            len(data["distance_matrix"]),
+            1,  # 車両数 = 1
+            data["starts"],
+            data["ends"]
+        )
+
+        routing = pywrapcp.RoutingModel(manager)
+
+        def distance_callback(from_index, to_index):
+            from_node = manager.IndexToNode(from_index)
+            to_node = manager.IndexToNode(to_index)
+            return int(data["distance_matrix"][from_node][to_node])
+
+        transit_callback_index = routing.RegisterTransitCallback(distance_callback)
+        routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
+
+        # pickup → dropoff 制約の追加
+        for pickup, delivery in data["pickups_deliveries"]:
+            pickup_index = manager.NodeToIndex(pickup)
+            delivery_index = manager.NodeToIndex(delivery)
+            routing.AddPickupAndDelivery(pickup_index, delivery_index)
+            routing.solver().Add(routing.VehicleVar(pickup_index) == routing.VehicleVar(delivery_index))
+            routing.solver().Add(
+                routing.CumulVar(pickup_index, 'time') <= routing.CumulVar(delivery_index, 'time')
+            )
+
+        search_parameters = pywrapcp.DefaultRoutingSearchParameters()
+        search_parameters.first_solution_strategy = (
+            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+        )
+
+        solution = routing.SolveWithParameters(search_parameters)
+
+        if solution:
+            index = routing.Start(0)
+            route_order = []
+            while not routing.IsEnd(index):
+                route_order.append(manager.IndexToNode(index))
+                index = solution.Value(routing.NextVar(index))
+            route_order.append(manager.IndexToNode(index))
+            return route_order
+        else:
+            return None
+
+    async def get_geojson_route(self) -> Optional[dict]:
+        """
+        全体処理：
+        ① 距離行列作成 → ② 最適訪問順算出 → ③ Mapbox Directions APIでルート取得
+        → 最終的に GeoJSON を返す
+        """
+        distance_matrix = await self.build_distance_matrix()
+        route_order = self.solve_route_order(distance_matrix)
+
+        if not route_order:
+            return None
+
+        ordered_coords = [self.coordinates[i] for i in route_order]
+        coord_str = ";".join([f"{lon},{lat}" for lat, lon in ordered_coords])
+
+        url = f"https://api.mapbox.com/directions/v5/mapbox/driving/{coord_str}"
+        params = {
+            "access_token": self.api_key,
+            "geometries": "geojson",
+            "overview": "full"
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+        return data["routes"][0]["geometry"]
+
+

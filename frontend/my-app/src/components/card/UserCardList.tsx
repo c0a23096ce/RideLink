@@ -7,7 +7,7 @@ export default function UserCardList({ users }: { users: LobbyUser[] }) {
   return (
     <Grid container spacing={2}>
       {users.map((user) => (
-        <Grid item key={user.id}>
+        <Grid item key={user.user_id}>
           <UserCard user={user} />
         </Grid>
       ))}

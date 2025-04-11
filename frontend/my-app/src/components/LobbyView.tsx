@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import apiClient from '../lib/apiClient';
 import { useRouter } from 'next/navigation';
+import { useSocket } from '@/contexts/WebSocketContext';
 
 const MapSection = dynamic(() => import('./MapSection'), { ssr: false });
 
@@ -22,6 +23,7 @@ export default function LobbyView({ onCreateLobby, onJoinLobby }: {
   onJoinLobby: () => void;
 }) {
   const router = useRouter();
+  const socket = useSocket();
   const [openMap, setOpenMap] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [searchOrigin, setSearchOrigin] = useState('');
@@ -30,7 +32,6 @@ export default function LobbyView({ onCreateLobby, onJoinLobby }: {
   const [origin, setOrigin] = useState<[number, number] | null>(null);
   const [user, setUser] = useState<any>(null);
   const [focus, setFocus] = useState<'origin' | 'destination'>('origin');
-  const [lobbyId, setLobbyId] = useState('');
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -45,13 +46,11 @@ export default function LobbyView({ onCreateLobby, onJoinLobby }: {
   }, []);
 
   useEffect(() => {
-    const socket = new WebSocket('ws://localhost:8000/ws?user_id=2'); // 仮のユーザーID
-    socket.onopen = () => {
-      console.log('WebSocket接続が確立されました');
-    };
+    if (!socket) return;
+
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      console.log('WebSocketメッセージ受信:', data); // 追加
+      console.log('WebSocketメッセージ受信:', data);
       if (data.type === 'lobby_full') {
         alert(data.message);
         router.push(`/lobbies/${data.lobby_id}/approved`);
@@ -59,10 +58,9 @@ export default function LobbyView({ onCreateLobby, onJoinLobby }: {
     };
 
     return () => {
-      socket.close();
-      console.log('WebSocket接続が閉じられました');
+      socket.onmessage = null;
     };
-  }, []);
+  }, [socket, router]);
 
   const handleGeolocate = () => {
     navigator.geolocation.getCurrentPosition(
@@ -105,13 +103,10 @@ export default function LobbyView({ onCreateLobby, onJoinLobby }: {
           passenger_destination: [destination[0], destination[1]],
         });
         if (lobby.data && lobby.data.error) {
-          alert(lobby.data.error); // エラーメッセージを表示
+          alert(lobby.data.error);
         } else {
-          alert('ロビーに参加しました'); // 正常時のメッセージ
+          alert('ロビーに参加しました');
         }
-        console.log(lobby);
-
-        // WebSocketで通知を待つため、ここでは画面遷移を行わない
       } else {
         const lobby = await apiClient.post('/matching/lobbies', {
           driver_id: 1, // 仮のユーザーID
@@ -163,7 +158,6 @@ export default function LobbyView({ onCreateLobby, onJoinLobby }: {
         </Button>
       </Box>
 
-      {/* マップオーバーレイ */}
       <Dialog open={openMap} onClose={() => setOpenMap(false)} fullScreen>
         <DialogContent sx={{ p: 2, position: 'relative' }}>
           <IconButton
@@ -213,6 +207,7 @@ export default function LobbyView({ onCreateLobby, onJoinLobby }: {
     </Box>
   );
 }
+
 
 
 

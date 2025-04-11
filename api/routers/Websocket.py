@@ -20,6 +20,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
         while True:
             # クライアントからのメッセージを受信
             data = await websocket.receive_text()
+            await websocket.send_text(f"受信しました: {data}")
             print(f"Received from {user_id}: {data}")
     except WebSocketDisconnect:
         # クライアントが切断した場合、MatchingServiceから接続を解除

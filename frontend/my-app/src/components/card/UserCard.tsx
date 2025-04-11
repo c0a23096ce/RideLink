@@ -10,9 +10,7 @@ import {
 } from '@mui/material';
 
 export type LobbyUser = {
-  id: number;
-  name: string;
-  role: 'driver' | 'passenger';
+  user_id: number;
 };
 
 export default function UserCard({ user }: { user: LobbyUser }) {
@@ -21,12 +19,9 @@ export default function UserCard({ user }: { user: LobbyUser }) {
       <CardContent>
         <Grid container alignItems="center" spacing={2}>
           <Grid item>
-            <Avatar>{user.name.charAt(0)}</Avatar>
-          </Grid>
-          <Grid item>
-            <Typography variant="h6">{user.name}</Typography>
+            <Typography variant="h6">{user.user_id}</Typography>
             <Typography variant="body2" color="text.secondary">
-              {user.role === 'driver' ? 'ドライバー' : '乗客'}
+              "ユーザーロール"
             </Typography>
           </Grid>
         </Grid>
