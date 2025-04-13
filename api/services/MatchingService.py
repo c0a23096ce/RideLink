@@ -28,6 +28,16 @@ class LobbyStatus:
     COMPLETED = "completed"  # マッチング完了
     CLOSED = "closed"        # 閉鎖済み
 
+class UserData:
+    """ユーザーのデータを保持するクラス"""
+    def __init__(self, user_id: int, user_role: str, user_location: tuple, user_destination: tuple):
+        self.user_id = user_id
+        self.user_role = UserRole.DRIVER if user_role == UserRole.DRIVER else UserRole.PASSENGER
+        self.user_location = user_location
+        self.user_destination = user_destination
+        self.user_status = RequestStatus.PENDING
+        self.timestamp = time.time()
+        
 class RideLobby:
     """ドライバーが作成するロビー"""
     def __init__(self, 
@@ -38,54 +48,48 @@ class RideLobby:
                  max_distance: float = 5.0,
                  max_passengers: int = 1,
                  preferences: Dict[str, Any] = {}):
-        self.lobby_id = lobby_id
-        self.driver_id = driver_id
-        self.starting_location = starting_location
-        self.destination = destination
-        self.max_distance = max_distance
-        self.max_passengers = max_passengers
-        self.preferences = preferences
+        self.lobby_id = lobby_id # ロビーID
+        self.max_distance = max_distance # 最大距離
+        self.max_passengers = max_passengers # 最大乗客数
+        self.preferences = preferences # その他の設定
         self.created_at = time.time()
         self.status = LobbyStatus.OPEN
         
-        # 参加リクエスト管理: {passenger_id: {"status": status, "timestamp": time, passenger_location: (lat, lng), passenger_destination: (lat, lng)}}
+        # ロビーの人物管理: {passenger_id: {"status": status, "timestamp": time, passenger_location: (lat, lng), passenger_destination: (lat, lng)}}
         # 承認状態も含む
-        self.requests: Dict[int, Dict[str, Any]] = {}
+        self.participants: Dict[int, UserData] = {driver_id: UserData(driver_id, UserRole.DRIVER, starting_location, destination)}
         
     def add_request(self, passenger_id: int, passenger_location: tuple, passenger_destination: tuple) -> bool:
         """乗車リクエストを追加"""
         # すでに満員の場合は拒否
-        if len(self.requests) >= self.max_passengers:
+        if len(self.participants) >= self.max_passengers:
             return False
             
         # すでにリクエスト済みの場合
-        if passenger_id in self.requests:
+        if passenger_id in self.participants:
             return False
             
         # 新しいリクエストを追加
-        self.requests[passenger_id] = {
-            "status": RequestStatus.PENDING,
-            "timestamp": time.time(),
-            "passenger_location": passenger_location,
-            "passenger_destination": passenger_destination
-        }
+        self.participants[passenger_id] = UserData(
+            passenger_id, 
+            UserRole.PASSENGER, 
+            passenger_location, 
+            passenger_destination
+        )
         return True
         
     def is_full(self) -> bool:
         """ロビーが満員かどうか"""
-        print(f"ロビー内の乗客数: {len(self.requests)}, 最大乗客数: {self.max_passengers}")
-        return len(self.requests) >= self.max_passengers
+        print(f"ロビー内の乗客数: {len(self.participants)}, 最大乗客数: {self.max_passengers}")
+        return len(self.participants) >= self.max_passengers
         
     def to_dict(self) -> Dict[str, Any]:
         """ロビー情報を辞書に変換"""
         return {
             "lobby_id": self.lobby_id,
-            "driver_id": self.driver_id,
-            "starting_location": self.starting_location,
-            "destination": self.destination,
             "max_distance": self.max_distance,
             "max_passengers": self.max_passengers,
-            "current_passengers": len(self.requests),
+            "current_users": len(self.participants),
             "status": self.status,
             "created_at": self.created_at,
             "preferences": self.preferences
@@ -93,7 +97,17 @@ class RideLobby:
     
     def get_approve_status(self) -> bool:
         """承認状況を取得"""
-        return all(request["status"] == RequestStatus.CONFIRMED for request in self.requests.values())
+        return all(request.user_status == RequestStatus.CONFIRMED for request in self.participants.values())
+    
+    def get_driver(self) -> UserData:
+        for user in self.participants.values():
+            if user.user_role == UserRole.DRIVER:
+                return user
+        return None
+    
+    def get_passengers(self) -> List[UserData]:
+        """乗客情報を取得"""
+        return [user for user in self.participants.values() if user.user_role == UserRole.PASSENGER]
 
 class MatchingService:
     _instance = None
@@ -107,11 +121,10 @@ class MatchingService:
     def __init__(self, db=None):
         if not self._initialized:
             self.db = db
-            self.ride_lobbies = {} # ロビーIDとロビーの対応
-            self.user_lobbies = {} # ユーザーIDとロビーIDの対応
+            self.ride_lobbies: Dict[str, RideLobby] = {} # ロビーIDとロビーの対応
+            self.user_lobbies: Dict[int, str] = {} # ユーザーIDとロビーIDの対応
             self._initialized = True
             self.active_connections: Dict[int, WebSocket] = {}  # ユーザーIDとWebSocketの対応
-            self.user_roles: Dict[int, str] = {}  # ユーザーID: 役割(driver/passenger)
 
         elif db is not None:
             self.db = db  # DBオブジェクトは常に更新
@@ -174,7 +187,6 @@ class MatchingService:
             # ロビーを登録
             self.ride_lobbies[lobby_id] = lobby
             self.user_lobbies[driver_id] = lobby_id # ドライバーが所属するロビーを登録
-            self.user_roles[driver_id] = UserRole.DRIVER # ドライバーの役割を登録
             
             return {
                 "success": True,
@@ -192,30 +204,28 @@ class MatchingService:
             lobby = self.ride_lobbies[lobby_id]
             
             # 権限チェック
-            if lobby.driver_id != driver_id:
+            if lobby.get_driver().user_id != driver_id:
                 return {"success": False, "error": "ロビーを閉じる権限がありません"}
             
             # ロビーを閉じる
             lobby.status = LobbyStatus.CLOSED
             
             # 参加リクエスト中のユーザーに通知
-            for passenger_id in lobby.requests:
-                if passenger_id in self.active_connections:
-                    await self.active_connections[passenger_id].send_json({
-                        "type": "lobby_closed",
-                        "lobby_id": lobby_id,
-                        "message": "ドライバーがロビーを閉じました"
-                    })
-                    
-                    # 乗客のロビー関連情報をクリア
-                    if passenger_id in self.user_lobbies and self.user_lobbies[passenger_id] == lobby_id:
-                        del self.user_lobbies[passenger_id]
-                        if passenger_id in self.user_roles:
-                            del self.user_roles[passenger_id]
+            for passenger_id in lobby.participants: # keyでループ
+                if passenger_id != driver_id:  # ドライバーは除外
+                    if passenger_id in self.active_connections:
+                        await self.active_connections[passenger_id].send_json({
+                            "type": "lobby_closed",
+                            "lobby_id": lobby_id,
+                            "message": "ドライバーがロビーを閉じました"
+                        })
+                        
+                        # 乗客のロビー関連情報をクリア
+                        if passenger_id in self.user_lobbies and self.user_lobbies[passenger_id] == lobby_id:
+                            del self.user_lobbies[passenger_id]
             
             # ドライバーの情報もクリア
             del self.user_lobbies[driver_id]
-            del self.user_roles[driver_id]
             
             # ロビーを削除
             del self.ride_lobbies[lobby_id]
@@ -327,7 +337,7 @@ class MatchingService:
         
         # 見つかったロビーにリクエスト
         lobby_id = lobby_info["lobby"]["lobby_id"]
-        result = await self.request_ride(passenger_id, lobby_id)
+        result = await self.request_ride(passenger_id, lobby_id, passenger_location, passenger_destination)
         
         print(f"ロビー情報: {result}")
         
@@ -338,20 +348,20 @@ class MatchingService:
             result["destination_distance"] = lobby_info["destination_distance"]
         
         
-        # ロビーが満員になった場合、WebSocketで通知
-        if result["isfull"]:
-            print("ロビーが満員になりました")
-            lobby = self.ride_lobbies[lobby_id]
-            participants = [lobby.driver_id] + list(lobby.requests.keys())
-            print(f"active_connections: {self.active_connections}")
-            # 全参加者に通知
-            for user_id in participants:
-                if user_id in self.active_connections:
-                    await self.active_connections[user_id].send_json({
-                        "type": "lobby_full",
-                        "lobby_id": lobby_id,
-                        "message": "ロビーが満員になりました。マッチングが確定しました。",
-                    })
+            # ロビーが満員になった場合、WebSocketで通知
+            if result["isfull"]:
+                print("ロビーが満員になりました")
+                lobby = self.ride_lobbies[lobby_id]
+                participants = [lobby.driver_id] + list(lobby.requests.keys())
+                print(f"active_connections: {self.active_connections}")
+                # 全参加者に通知
+                for user_id in participants:
+                    if user_id in self.active_connections:
+                        await self.active_connections[user_id].send_json({
+                            "type": "lobby_full",
+                            "lobby_id": lobby_id,
+                            "message": "ロビーが満員になりました。マッチングが確定しました。",
+                        })
         
         return result
 
@@ -418,7 +428,7 @@ class MatchingService:
             if is_confirmed:
                 match = await self._complete_matching(lobby)
             
-            return is_confirmed
+            return match
 
     async def get_lobby_requests(self, driver_id: int, lobby_id: str) -> Dict[str, Any]:
         """ドライバーがロビーのリクエスト一覧を取得"""
