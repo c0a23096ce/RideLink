@@ -62,7 +62,7 @@ class RideLobby:
     def add_request(self, passenger_id: int, passenger_location: tuple, passenger_destination: tuple) -> bool:
         """乗車リクエストを追加"""
         # すでに満員の場合は拒否
-        if len(self.participants) >= self.max_passengers:
+        if len(self.participants)-1 >= self.max_passengers:
             return False
             
         # すでにリクエスト済みの場合
@@ -80,8 +80,9 @@ class RideLobby:
         
     def is_full(self) -> bool:
         """ロビーが満員かどうか"""
-        print(f"ロビー内の乗客数: {len(self.participants)}, 最大乗客数: {self.max_passengers}")
-        return len(self.participants) >= self.max_passengers
+        # ドライバーを除外して乗客数をカウント
+        print(f"ロビー内の乗客数: {len(self.participants)-1}, 最大乗客数: {self.max_passengers}")
+        return len(self.participants)-1 >= self.max_passengers
         
     def to_dict(self) -> Dict[str, Any]:
         """ロビー情報を辞書に変換"""
@@ -248,16 +249,18 @@ class MatchingService:
                     continue
                 
                 # 既にリクエスト済みのロビーは除外
-                if passenger_id in lobby.requests:
+                if passenger_id in lobby.participants: # ドライバーも入る
                     continue
                 
+                driver_id = lobby.get_driver().user_id
+                
                 # 出発地の距離チェック
-                start_distance = await self.calculate_distance(passenger_location, lobby.starting_location)
+                start_distance = await self.calculate_distance(passenger_location, lobby.participants[driver_id].user_location)
                 
                 # 目的地の距離チェック
                 destination_distance = float('inf')
-                if passenger_destination and lobby.destination:
-                    destination_distance = await self.calculate_distance(passenger_destination, lobby.destination)
+                if passenger_destination and lobby.participants[driver_id].user_destination:
+                    destination_distance = await self.calculate_distance(passenger_destination, lobby.participants[driver_id].user_destination)
                 
                 # 出発地と目的地の両方が距離制限内の場合のみ追加
                 if start_distance <= max_distance and (destination_distance <= max_distance or passenger_destination is None or lobby.destination is None):
@@ -307,7 +310,6 @@ class MatchingService:
             
             # 乗客情報を登録
             self.user_lobbies[passenger_id] = lobby_id
-            self.user_roles[passenger_id] = UserRole.PASSENGER
             
             isfull = lobby.is_full()
             
@@ -352,7 +354,7 @@ class MatchingService:
             if result["isfull"]:
                 print("ロビーが満員になりました")
                 lobby = self.ride_lobbies[lobby_id]
-                participants = [lobby.driver_id] + list(lobby.requests.keys())
+                participants = list(lobby.participants.keys())
                 print(f"active_connections: {self.active_connections}")
                 # 全参加者に通知
                 for user_id in participants:
@@ -502,7 +504,7 @@ class MatchingService:
             return []
         
         lobby = self.ride_lobbies[lobby_id]
-        return [lobby.driver_id] + list(lobby.requests.keys()) # とりあえずドライバーと乗客のIDを返す
+        return list(lobby.participants.keys()) # とりあえずドライバーと乗客のIDを返す
     
     async def _complete_matching(self, lobby: RideLobby) -> Match:
         """マッチングを完了してデータベースに保存"""
@@ -562,7 +564,7 @@ class MatchingService:
         
             
         # 参加者全員に通知
-        match_participants = [lobby.driver_id] + list(lobby.requests)
+        match_participants = list(lobby.participants.keys())
         
         for user_id in match_participants:
             # WebSocketで通知

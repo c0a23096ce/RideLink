@@ -15,7 +15,7 @@ class MatchCreate(BaseModel):
     destination: Tuple[float, float] = Field(..., example=(35.681236, 139.767125))
 
 class MatchJoin(BaseModel):
-    passenger_id: int = Field(..., example=1)
+    passenger_id: int = Field(..., example=2)
     passenger_location: Tuple[float, float] = Field(..., example=(35.681236, 139.767125))
     passenger_destination: Tuple[float, float] = Field(..., example=(35.681236, 139.767125))
 
