@@ -1,0 +1,17 @@
+{
+    "name": "RideLink Frontend",
+    "dockerComposeFile": ["../../docker-compose.yaml"],
+    "service": "frontend",
+    "workspaceFolder": "/app",
+    "customizations": {
+      "vscode": {
+        "extensions": [
+          "dbaeumer.vscode-eslint",
+          "esbenp.prettier-vscode"
+        ]
+      }
+    },
+    "postCreateCommand": "yarn install",
+    "remoteUser": "root"
+  }
+  

@@ -1,0 +1,16 @@
+{
+  "name": "RideLink Backend",
+  "dockerComposeFile": ["../../docker-compose.yaml"],
+  "service": "backend",
+  "workspaceFolder": "/app",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  },
+  "postCreateCommand": "poetry install --no-root",
+  "remoteUser": "root"
+}

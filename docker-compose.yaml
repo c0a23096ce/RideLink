@@ -1,14 +1,15 @@
 services:
-  demo-app:
-    build: .
+  backend:
+    build:
+      context: ./backend/api
+      dockerfile: Dockerfile
     volumes:
-      - .dockervenv:/src/.venv
-      - .:/src
+      - ./backend/api:/app
     ports:
       - "8000:8000"
     environment:
       - WATCHFILE_FORCE_POLLING=true
-    
+
   db:
     image: mysql:8.0
     platform: linux/x86_64
@@ -18,24 +19,23 @@ services:
       TZ: "Asia/Tokyo"
     volumes:
       - db-data:/var/lib/mysql
-    command: --default-authentication-plugin=mysql_native_password
     ports:
       - "33306:3306"
 
-  # 新しいフロントエンドサービス
   frontend:
-    build: 
+    build:
       context: ./frontend/my-app
-      dockerfile: dockerfile
     volumes:
       - ./frontend/my-app:/app
+      - node_modules:/app/node_modules
     ports:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
       - WATCHPACK_POLLING=true
     depends_on:
-      - demo-app
+      - backend
 
 volumes:
   db-data:
+  node_modules:
