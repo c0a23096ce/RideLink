@@ -9,7 +9,8 @@ import random
 from geopy.distance import geodesic 
 from services.RouteGenerateService import RouteGenerateService
 from config import settings
-from models.models import Match, MatchPassenger
+from models.models import Match, MatchUser
+from cruds.MatchCRUD import MatchCRUD
 
 class UserRole:
     """ユーザーの役割を定義する定数"""
@@ -129,6 +130,7 @@ class MatchingService:
 
         elif db is not None:
             self.db = db  # DBオブジェクトは常に更新
+            self.match_crud = MatchCRUD(self.db)
 
         self.lock = asyncio.Lock()  # 排他制御用ロック
         
@@ -383,27 +385,19 @@ class MatchingService:
             lobby = self.ride_lobbies[lobby_id]
             
             # リクエストの存在確認
-            if passenger_id not in lobby.requests:
+            if passenger_id not in lobby.participants:
                 return {"success": False, "error": "リクエストが存在しません"}
             
             # 確定済みの場合はキャンセル不可
-            if passenger_id in lobby.requests:
+            if passenger_id in lobby.get_passengers() and lobby.participants[passenger_id].user_status == RequestStatus.CONFIRMED:
                 return {"success": False, "error": "確定済みのリクエストはキャンセルできません"}
             
             # リクエストを削除
-            del lobby.requests[passenger_id]
-            
-            # 承認リストからも削除
-            if passenger_id in lobby.driver_approved:
-                lobby.driver_approved.remove(passenger_id)
-            if passenger_id in lobby.passenger_approved:
-                lobby.passenger_approved.remove(passenger_id)
+            del lobby.participants[passenger_id]
             
             # 乗客情報を削除
             if passenger_id in self.user_lobbies:
                 del self.user_lobbies[passenger_id]
-            if passenger_id in self.user_roles:
-                del self.user_roles[passenger_id]
             
             return {"success": True, "message": "リクエストをキャンセルしました"}
     
@@ -417,43 +411,23 @@ class MatchingService:
             lobby = self.ride_lobbies[lobby_id]
             
             # 権限とステータスチェック
-            if user_id not in lobby.requests:
+            if user_id not in lobby.participants:
                 return {"success": False, "error": "リクエストが存在しません"}
             
             # 承認処理
-            self.ride_lobbies[lobby_id].requests[user_id]["status"] = RequestStatus.CONFIRMED
+            self.ride_lobbies[lobby_id].participants[user_id].user_status = RequestStatus.CONFIRMED
             
             # 双方承認済みかどうか
             is_confirmed = lobby.get_approve_status()
             print(f"承認状況: {lobby.get_approve_status()}")
             
             if is_confirmed:
+                print("DBへのマッチ保存を開始")
+                print(f"マッチング完了: {lobby.lobby_id} - ロビーのユーザー: {lobby.participants}")
                 match = await self._complete_matching(lobby)
+                return {"success": True, "match": match}
             
-            return match
-
-    async def get_lobby_requests(self, driver_id: int, lobby_id: str) -> Dict[str, Any]:
-        """ドライバーがロビーのリクエスト一覧を取得"""
-        async with self.lock:
-            # ロビーの存在確認
-            if lobby_id not in self.ride_lobbies:
-                return {"success": False, "error": "ロビーが存在しません"}
-            
-            lobby = self.ride_lobbies[lobby_id]
-            
-            # 権限チェック
-            if lobby.driver_id != driver_id:
-                return {"success": False, "error": "権限がありません"}
-            
-            # リクエスト一覧を取得
-            requests = lobby.get_passenger_requests()
-            
-            return {
-                "success": True,
-                "lobby_id": lobby_id,
-                "requests": requests,
-                "requests": list(lobby.requests)
-            }
+            return {"success": True, "message": "承認されましたが、まだ全員の承認が完了していません"}
     
     async def get_available_lobbies(self, passenger_location: Tuple[float, float], max_distance: float = 5.0) -> List[Dict[str, Any]]:
         """乗客が利用可能なロビー一覧を取得"""
@@ -466,7 +440,7 @@ class MatchingService:
                     continue
                 
                 # 距離チェック
-                distance = await self.calculate_distance(passenger_location, lobby.starting_location)
+                distance = await self.calculate_distance(passenger_location, lobby.participants[lobby.get_driver().user_id].user_location)
                 if distance <= max_distance:
                     lobby_info = lobby.to_dict()
                     lobby_info["distance"] = distance
@@ -495,7 +469,7 @@ class MatchingService:
             return {
                 "success": True,
                 "lobby": lobby.to_dict(),
-                "requests": lobby.get_passenger_requests()
+                "participants": [user.user_id for user in lobby.participants.values()]
             }
     
     async def get_lobby_users(self, lobby_id: str) -> List[int]:
@@ -509,26 +483,26 @@ class MatchingService:
     async def _complete_matching(self, lobby: RideLobby) -> Match:
         """マッチングを完了してデータベースに保存"""
         # ロビーのステータスを更新
-        print(f"マッチング完了: {lobby.lobby_id} - 参加者: {lobby.requests}")
+        print(f"マッチング完了: {lobby.lobby_id} - ロビーのユーザー: {lobby.participants}")
         lobby.status = LobbyStatus.COMPLETED
         
         # 案内ルートを生成
-        coordinates = [lobby.starting_location]  # ドライバー出発地
+        coordinates = [lobby.get_driver().user_location]  # ドライバー出発地
         pickups_deliveries = []
 
-        for i, (pid, info) in enumerate(lobby.requests.items()):
-            coordinates.append(info["passenger_location"])
-            coordinates.append(info["passenger_destination"])
+        for i, (pid, info) in enumerate(lobby.participants.items()):
+            coordinates.append(info.user_location)
+            coordinates.append(info.user_destination)
             pickups_deliveries.append((1 + i * 2, 1 + i * 2 + 1))
 
-        coordinates.append(lobby.destination)  # ドライバーの目的地
+        coordinates.append(lobby.get_driver().user_destination)  # ドライバーの目的地
 
         route_service = RouteGenerateService(
-            api_key=settings.mapbox_api_key,
-            coordinates=coordinates,
-            pickups_deliveries=pickups_deliveries,
-            start_index=0,
-            end_index=len(coordinates) - 1
+            api_key=settings.mapbox_api_key, # Mapbox APIキー
+            coordinates=coordinates, # 経路座標
+            pickups_deliveries=pickups_deliveries, # ピックアップとドロップオフの座標
+            start_index=0, # ドライバーの出発地
+            end_index=len(coordinates) - 1 # ドライバーの目的地
         )
 
         geojson = await route_service.get_geojson_route()
@@ -538,29 +512,30 @@ class MatchingService:
         else:
             print("❌ 経路生成に失敗しました")
         
-        # データベースにマッチを作成
-        match = Match(
-            driver_id=lobby.driver_id, 
-            status="Moving",
-            driver_start_lat=lobby.starting_location[0],
-            driver_start_lng=lobby.starting_location[1],
-            driver_destination_lat=lobby.destination[0],
-            driver_destination_lng=lobby.destination[1],
-            route_geojson=geojson,
-            )
-        self.db.add(match)
+        match_data = {
+            "status": "Moving",
+            "route_geojson": geojson
+        }
+        
+        match = self.match_crud.create_match(match_data)
+        
+        self.db.flush() # matchのIDを取得するためにflush
         
         # 乗車者情報をデータベースに保存
-        for passenger_id in lobby.requests:
-            passenger = MatchPassenger(
-                match_id=match.match_id,
-                passenger_id=passenger_id,
-                passenger_start_lat=passenger_id["passenger_location"][0],
-                passenger_start_lng=passenger_id["passenger_location"][1],
-                passenger_destination_lat=passenger_id["passenger_destination"][0],
-                passenger_destination_lng=passenger_id["passenger_destination"][1]
-                )
-            self.db.add(passenger)
+        users = []
+        for passenger_info in lobby.participants.values():
+            users_data = {
+                "match_id": match.match_id,
+                "user_id": passenger_info.user_id,
+                "user_start_lat": passenger_info.user_location[0],
+                "user_start_lng": passenger_info.user_location[1],
+                "user_destination_lat": passenger_info.user_destination[0],
+                "user_destination_lng": passenger_info.user_destination[1],
+                "user_role": passenger_info.user_role,
+            }
+            users.append(MatchUser(**users_data))
+        
+        self.match_crud.add_match_users(users)
         
             
         # 参加者全員に通知
@@ -570,7 +545,7 @@ class MatchingService:
             # WebSocketで通知
             if user_id in self.active_connections:
                 await self.active_connections[user_id].send_json({
-                    "type": "マッチングが確定しました。案内を開始します。",
+                    "type": "lobby_approved",
                     "match_id": match.match_id,
                     "participants": match_participants
                 })
@@ -578,14 +553,12 @@ class MatchingService:
             # ユーザー情報をクリア
             if user_id in self.user_lobbies:
                 del self.user_lobbies[user_id]
-            if user_id in self.user_roles:
-                del self.user_roles[user_id]
         
         # ロビーを削除
         if lobby.lobby_id in self.ride_lobbies:
             del self.ride_lobbies[lobby.lobby_id]
         
-        self.db.commit()
+        self.db.commit() # usersまでをトランザクションとするためにここでコミット
         self.db.refresh(match)
         print(f"DBにマッチを保存: {match.match_id}")
         return match

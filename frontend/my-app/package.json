@@ -16,6 +16,7 @@
     "@types/react-leaflet": "^3.0.0",
     "axios": "^1.8.4",
     "leaflet": "^1.9.4",
+    "mapbox-gl": "^3.11.0",
     "next": "15.2.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@types/mapbox-gl": "^3.4.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

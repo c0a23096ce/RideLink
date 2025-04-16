@@ -58,7 +58,7 @@ export default function LobbyUserPage() {
       console.log('WebSocketメッセージ受信:', data);
       if (data.type === 'lobby_approved') {
         alert(data.message);
-        router.push();
+        router.push(`/matches/${data.match_id}/navigation`);
       }
     };
 
@@ -69,7 +69,12 @@ export default function LobbyUserPage() {
 
   const handleApprove = async () => {
     try {
-      await apiClient.post(`/matching/lobbies/${lobby_id}/approved`);
+      await apiClient.post(`/matching/lobbies/${lobby_id}/approved`,
+        {
+          user_id: 2, // 仮のユーザーID
+          lobby_id: lobby_id,
+        }
+      );
       alert('マッチングが承認されました');
     } catch (error) {
       console.error('承認に失敗しました', error);

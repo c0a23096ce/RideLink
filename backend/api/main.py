@@ -1,6 +1,7 @@
+from routers import Matched
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import User, Websocket, Matching, RouteGenerate
+from routers import User, Websocket, Matching
 
 app = FastAPI()
 
@@ -9,7 +10,7 @@ reset_database()
 
 app.include_router(User.router)
 app.include_router(Matching.router)
-app.include_router(RouteGenerate.router)
+app.include_router(Matched.router)
 app.include_router(Websocket.router)
 
 from fastapi import FastAPI, Request, status

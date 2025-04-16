@@ -40,8 +40,10 @@ class RouteGenerateService:
             response = await client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
-
-        return data["distances"]
+        
+        print("レスポンス:", response.json())
+        
+        return data["durations"]
 
     def create_data_model(self, distance_matrix: List[List[int]]) -> dict:
         return {
@@ -55,6 +57,7 @@ class RouteGenerateService:
         """
         OR-Tools を使って訪問順序を計算する（pickup → dropoff の制約付き）
         """
+        print("訪問順序計算中...")
         data = self.create_data_model(distance_matrix)
 
         manager = pywrapcp.RoutingIndexManager(
@@ -74,14 +77,24 @@ class RouteGenerateService:
         transit_callback_index = routing.RegisterTransitCallback(distance_callback)
         routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
 
-        # pickup → dropoff 制約の追加
+        # ✅ ここで「time」ディメンションを追加
+        routing.AddDimension(
+            transit_callback_index,
+            0,          # slack（余裕時間）
+            100000,     # 最大走行時間（適当な大きい値）
+            True,       # 最初のノードの時間を0に固定する
+            "time"      # ディメンション名（CumulVarで使う）
+        )
+        time_dimension = routing.GetDimensionOrDie("time")
+
+        # ✅ pickup → dropoff の順序制約
         for pickup, delivery in data["pickups_deliveries"]:
             pickup_index = manager.NodeToIndex(pickup)
             delivery_index = manager.NodeToIndex(delivery)
             routing.AddPickupAndDelivery(pickup_index, delivery_index)
             routing.solver().Add(routing.VehicleVar(pickup_index) == routing.VehicleVar(delivery_index))
             routing.solver().Add(
-                routing.CumulVar(pickup_index, 'time') <= routing.CumulVar(delivery_index, 'time')
+                time_dimension.CumulVar(pickup_index) <= time_dimension.CumulVar(delivery_index)
             )
 
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
@@ -98,9 +111,11 @@ class RouteGenerateService:
                 route_order.append(manager.IndexToNode(index))
                 index = solution.Value(routing.NextVar(index))
             route_order.append(manager.IndexToNode(index))
+            print("訪問順序計算完了")
             return route_order
         else:
             return None
+
 
     async def get_geojson_route(self) -> Optional[dict]:
         """
@@ -108,6 +123,7 @@ class RouteGenerateService:
         ① 距離行列作成 → ② 最適訪問順算出 → ③ Mapbox Directions APIでルート取得
         → 最終的に GeoJSON を返す
         """
+        print("経路生成中...")
         distance_matrix = await self.build_distance_matrix()
         route_order = self.solve_route_order(distance_matrix)
 
@@ -128,7 +144,8 @@ class RouteGenerateService:
             response = await client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
-
+        
+        print(f'return_data: {data["routes"][0]["geometry"]}')
         return data["routes"][0]["geometry"]
 
 

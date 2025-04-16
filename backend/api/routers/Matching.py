@@ -97,7 +97,7 @@ async def join_lobby(match_data: match_shema.MatchJoin, db: Session = Depends(ge
     return result
 
 @router.post("/lobbies/{lobby_id}/approved")
-async def lobby_approve(approve_data: match_shema.ApproveLobby, db: Session = Depends(get_db)):
+async def lobby_approve(lobby_id: str, approve_data: match_shema.ApproveLobby, db: Session = Depends(get_db)):
     """ロビーを承認するエンドポイント
 
     Args:
@@ -111,7 +111,7 @@ async def lobby_approve(approve_data: match_shema.ApproveLobby, db: Session = De
     matching_service = MatchingService(db)
     result = await matching_service.approve_ride(
         user_id=approve_data.user_id,
-        lobby_id=approve_data.lobby_id
+        lobby_id=lobby_id
     )
     return result
 
