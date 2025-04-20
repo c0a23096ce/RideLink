@@ -11,13 +11,13 @@ class Match(BaseModel):
 
 class MatchCreate(BaseModel):
     driver_id: int = Field(..., example=1)
-    driver_location: Tuple[float, float] = Field(..., example=(35.681236, 139.767125))
-    destination: Tuple[float, float] = Field(..., example=(35.671667, 139.763056))
+    driver_location: Tuple[float, float] = Field(..., example=(35.681236, 139.767125)) # 東京駅
+    destination: Tuple[float, float] = Field(..., example=(35.671667, 139.763056)) # 銀座
 
 class MatchJoin(BaseModel):
     passenger_id: int = Field(..., example=2)
-    passenger_location: Tuple[float, float] = Field(..., example=(35.684295, 139.774124))
-    passenger_destination: Tuple[float, float] = Field(..., example=(35.666247, 139.758093))
+    passenger_location: Tuple[float, float] = Field(..., example=(35.684295, 139.774124)) # 日本橋
+    passenger_destination: Tuple[float, float] = Field(..., example=(35.666247, 139.758093)) # 新橋
 
 class ApproveLobby(BaseModel):
     user_id: int = Field(..., example=1)

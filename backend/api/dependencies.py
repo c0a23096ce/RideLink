@@ -13,6 +13,10 @@ from dotenv import load_dotenv
 
 import os
 
+from fastapi import Request
+from services.MatchingService import MatchingService
+from services.ConnectionManager import ConnectionManager
+
 load_dotenv()
 # JWT設定
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")  # セキュリティ上、環境変数などで管理してください
@@ -71,3 +75,9 @@ def get_current_user(token_data: TokenData = Depends(get_token_data), db: Sessio
         )
     # SQLAlchemyオブジェクトはそのままでは返せないのでPydanticモデルに変換
     return UserSchema.from_orm(user)
+
+def get_matching_service(request: Request) -> MatchingService:
+    return request.app.state.matching_service
+
+def get_connection_manager(request: Request) -> ConnectionManager:
+    return request.app.state.connection_manager

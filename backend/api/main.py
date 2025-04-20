@@ -1,35 +1,45 @@
-from routers import Matched
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from routers import User, Websocket, Matching
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from routers import User, Matching, Matched, Websocket
+
+# ← ★ WebSocketサービスをインポート
+from services.ConnectionManager import ConnectionManager
+from services.MatchingService import MatchingService
 
 app = FastAPI()
 
+# ← ★ WebSocketとMatchingServiceのインスタンスを作ってアプリに登録
+connection_manager = ConnectionManager()
+matching_service = MatchingService()
+matching_service.set_connection_manager(connection_manager)
+
+app.state.connection_manager = connection_manager
+app.state.matching_service = matching_service
+
+# DB初期化
 from database import reset_database
 reset_database()
 
+# ルーター登録
 app.include_router(User.router)
 app.include_router(Matching.router)
 app.include_router(Matched.router)
 app.include_router(Websocket.router)
 
-from fastapi import FastAPI, Request, status
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-
+# バリデーションエラーをJSONで返す
 @app.exception_handler(RequestValidationError)
-async def handler(request:Request, exc:RequestValidationError):
+async def handler(request: Request, exc: RequestValidationError):
     print(exc)
     return JSONResponse(content={}, status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
-origins = [
-    "http://localhost:3000",  # Next.jsのURL
-]
-
+# CORS設定
+origins = ["http://localhost:5173"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,              # 許可するオリジン
-    allow_credentials=True,             # Cookie認証を許可する
-    allow_methods=["*"],                # 全てのHTTPメソッドを許可（GET, POSTなど）
-    allow_headers=["*"],                # 全てのヘッダーを許可
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )

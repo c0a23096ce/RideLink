@@ -11,6 +11,7 @@ from services.RouteGenerateService import RouteGenerateService
 from config import settings
 from models.models import Match, MatchUser
 from cruds.MatchCRUD import MatchCRUD
+from services.ConnectionManager import ConnectionManager
 
 class UserRole:
     """ユーザーの役割を定義する定数"""
@@ -29,6 +30,11 @@ class LobbyStatus:
     COMPLETED = "completed"  # マッチング完了
     CLOSED = "closed"        # 閉鎖済み
 
+class UserState:
+    """ユーザーの状態を定義する定数"""
+    WAITING = "waiting"      # 待機中
+    MATCHED = "matched"      # マッチング済み
+
 class UserData:
     """ユーザーのデータを保持するクラス"""
     def __init__(self, user_id: int, user_role: str, user_location: tuple, user_destination: tuple):
@@ -38,6 +44,7 @@ class UserData:
         self.user_destination = user_destination
         self.user_status = RequestStatus.PENDING
         self.timestamp = time.time()
+        self.user_state = UserState.WAITING
         
 class RideLobby:
     """ドライバーが作成するロビー"""
@@ -113,45 +120,30 @@ class RideLobby:
 
 class MatchingService:
     _instance = None
-    
+
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._initialized = False
         return cls._instance
-    
-    def __init__(self, db=None):
+
+    def __init__(self, db=None, connection_manager: ConnectionManager = None):
         if not self._initialized:
-            self.db = db
-            self.ride_lobbies: Dict[str, RideLobby] = {} # ロビーIDとロビーの対応
-            self.user_lobbies: Dict[int, str] = {} # ユーザーIDとロビーIDの対応
+            self.ride_lobbies: Dict[str, RideLobby] = {}
+            self.user_lobbies: Dict[int, str] = {}
+            self.lock = asyncio.Lock()
+            self.connection_manager = connection_manager  # ← 追加
             self._initialized = True
-            self.active_connections: Dict[int, WebSocket] = {}  # ユーザーIDとWebSocketの対応
 
-        elif db is not None:
-            self.db = db  # DBオブジェクトは常に更新
-            self.match_crud = MatchCRUD(self.db)
+        if db is not None:
+            self.set_db(db)
 
-        self.lock = asyncio.Lock()  # 排他制御用ロック
-        
-    async def register_connection(self, user_id: int, websocket: WebSocket):
-        """WebSocket接続を登録"""
-        self.active_connections[user_id] = websocket
-        print(f"User {user_id}を接続しました")
-        print(f"現在の接続: {self.active_connections}")
-        
-    async def unregister_connection(self, user_id: int):
-        """WebSocket接続を解除"""
-        if user_id in self.active_connections:
-            del self.active_connections[user_id]
-            
-            # ユーザーが所属するロビーから退出処理
-            if user_id in self.user_lobbies:
-                lobby_id = self.user_lobbies[user_id]
-                if user_id in self.user_roles and self.user_roles[user_id] == UserRole.DRIVER:
-                    await self.close_lobby(user_id, lobby_id)
-                else:
-                    await self.cancel_ride_request(user_id, lobby_id)
+    def set_db(self, db: Session):
+        self.db = db
+        self.match_crud = MatchCRUD(self.db)
+    
+    def set_connection_manager(self, connection_manager: ConnectionManager):
+        self.connection_manager = connection_manager
     
     async def calculate_distance(self, coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
         """2点間の距離を計算"""
@@ -216,8 +208,8 @@ class MatchingService:
             # 参加リクエスト中のユーザーに通知
             for passenger_id in lobby.participants: # keyでループ
                 if passenger_id != driver_id:  # ドライバーは除外
-                    if passenger_id in self.active_connections:
-                        await self.active_connections[passenger_id].send_json({
+                    if self.connection_manager:
+                        await self.connection_manager.send_to_json_user(passenger_id, {
                             "type": "lobby_closed",
                             "lobby_id": lobby_id,
                             "message": "ドライバーがロビーを閉じました"
@@ -357,11 +349,11 @@ class MatchingService:
                 print("ロビーが満員になりました")
                 lobby = self.ride_lobbies[lobby_id]
                 participants = list(lobby.participants.keys())
-                print(f"active_connections: {self.active_connections}")
+                print(f"connection_manager: {self.connection_manager.active_connections}")
                 # 全参加者に通知
                 for user_id in participants:
-                    if user_id in self.active_connections:
-                        await self.active_connections[user_id].send_json({
+                    if self.connection_manager:
+                        await self.connection_manager.send_to_json_user(user_id, {
                             "type": "lobby_full",
                             "lobby_id": lobby_id,
                             "message": "ロビーが満員になりました。マッチングが確定しました。",
@@ -543,8 +535,8 @@ class MatchingService:
         
         for user_id in match_participants:
             # WebSocketで通知
-            if user_id in self.active_connections:
-                await self.active_connections[user_id].send_json({
+            if self.connection_manager:
+                await self.connection_manager.send_to_json_user(user_id, {
                     "type": "lobby_approved",
                     "match_id": match.match_id,
                     "participants": match_participants
