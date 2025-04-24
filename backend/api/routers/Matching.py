@@ -64,7 +64,7 @@ async def join_lobby(
 
 @router.post("/lobbies/{lobby_id}/approved")
 async def lobby_approve(
-    lobby_id: str,
+    lobby_id: int,
     approve_data: match_shema.ApproveLobby,
     db: Session = Depends(get_db),
     matching_service: MatchingService = Depends(get_matching_service)

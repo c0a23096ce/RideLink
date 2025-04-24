@@ -12,50 +12,30 @@ from config import settings
 from models.models import Match, MatchUser
 from cruds.MatchCRUD import MatchCRUD
 from services.ConnectionManager import ConnectionManager
-
-class UserRole:
-    """ユーザーの役割を定義する定数"""
-    DRIVER = "driver"
-    PASSENGER = "passenger"
-
-class RequestStatus:
-    """リクエストのステータスを定義する定数"""
-    PENDING = "pending"      # 申請中
-    CONFIRMED = "confirmed"  # 双方確認済み
-
-class LobbyStatus:
-    """ロビーのステータスを定義する定数"""
-    OPEN = "open"            # 参加者募集中
-    MATCHING = "matching"    # マッチング中
-    COMPLETED = "completed"  # マッチング完了
-    CLOSED = "closed"        # 閉鎖済み
-
-class UserState:
-    """ユーザーの状態を定義する定数"""
-    WAITING = "waiting"      # 待機中
-    MATCHED = "matched"      # マッチング済み
+from services.Enums import UserRole, UserStatus, LobbyStatus
 
 class UserData:
     """ユーザーのデータを保持するクラス"""
-    def __init__(self, user_id: int, user_role: str, user_location: tuple, user_destination: tuple):
+    def __init__(self, user_id: int, user_role: str, user_location: tuple, user_destination: tuple, user_status: str):
         self.user_id = user_id
         self.user_role = UserRole.DRIVER if user_role == UserRole.DRIVER else UserRole.PASSENGER
         self.user_location = user_location
         self.user_destination = user_destination
-        self.user_status = RequestStatus.PENDING
+        self.user_status = user_status
         self.timestamp = time.time()
-        self.user_state = UserState.WAITING
         
 class RideLobby:
     """ドライバーが作成するロビー"""
     def __init__(self, 
-                 lobby_id: str, 
+                 lobby_id: int, 
                  driver_id: int, 
                  starting_location: Tuple[float, float],
                  destination: Optional[Tuple[float, float]],
-                 max_distance: float = 5.0,
-                 max_passengers: int = 1,
-                 preferences: Dict[str, Any] = {}):
+                 user_status: str,
+                 max_distance: float,
+                 max_passengers: int,
+                 preferences: Dict[str, Any] = {}
+                 ):
         self.lobby_id = lobby_id # ロビーID
         self.max_distance = max_distance # 最大距離
         self.max_passengers = max_passengers # 最大乗客数
@@ -65,24 +45,17 @@ class RideLobby:
         
         # ロビーの人物管理: {passenger_id: {"status": status, "timestamp": time, passenger_location: (lat, lng), passenger_destination: (lat, lng)}}
         # 承認状態も含む
-        self.participants: Dict[int, UserData] = {driver_id: UserData(driver_id, UserRole.DRIVER, starting_location, destination)}
+        self.participants: Dict[int, UserData] = {driver_id: UserData(driver_id, UserRole.DRIVER, starting_location, destination, user_status)}
         
-    def add_request(self, passenger_id: int, passenger_location: tuple, passenger_destination: tuple) -> bool:
-        """乗車リクエストを追加"""
-        # すでに満員の場合は拒否
-        if len(self.participants)-1 >= self.max_passengers:
-            return False
-            
-        # すでにリクエスト済みの場合
-        if passenger_id in self.participants:
-            return False
-            
-        # 新しいリクエストを追加
+    def add_user(self, passenger_id: int, user_role: str, passenger_location: tuple, passenger_destination: tuple, user_status: str) -> bool:
+        """ユーザーを追加"""
+        # 新しいユーザーを追加
         self.participants[passenger_id] = UserData(
-            passenger_id, 
-            UserRole.PASSENGER, 
-            passenger_location, 
-            passenger_destination
+            user_id=passenger_id, 
+            user_role=user_role, 
+            user_location=passenger_location, 
+            user_destination=passenger_destination,
+            user_status=user_status
         )
         return True
         
@@ -106,7 +79,7 @@ class RideLobby:
     
     def get_approve_status(self) -> bool:
         """承認状況を取得"""
-        return all(request.user_status == RequestStatus.CONFIRMED for request in self.participants.values())
+        return all(request.user_status == UserStatus.APPROVED for request in self.participants.values())
     
     def get_driver(self) -> UserData:
         for user in self.participants.values():
@@ -153,7 +126,7 @@ class MatchingService:
         return geodesic(coord1, coord2).kilometers
     
     async def create_driver_lobby(self, 
-                                driver_id: int, 
+                                driver_id: int,
                                 starting_location: Tuple[float, float],
                                 destination: Optional[Tuple[float, float]] = None,
                                 max_distance: float = 5.0,
@@ -162,30 +135,59 @@ class MatchingService:
         """ドライバーがロビーを作成"""
         async with self.lock:
             # ドライバーが既にロビーを持っているか確認
-            if driver_id in self.user_lobbies:
+            active_lobby = self.match_crud.get_active_lobby_by_driver(driver_id)
+            if active_lobby:
                 return {"success": False, "error": "すでにロビーに所属しています"}
             
-            # 新しいロビーIDを生成
-            lobby_id = str(uuid.uuid4())
+            # DBにロビーを保存
+            match_data = {
+                "status": LobbyStatus.OPEN,
+                "max_passengers": max_passengers,
+                "max_distance": max_distance,
+                "preferences": preferences if preferences else {},
+            }
+            try:
+                match = self.match_crud.create_match(match_data) # コミットはしていない
+            except Exception as e:
+                return {"success": False, "error": f"DB保存に失敗しました: {str(e)}"}
+            
+            driver_data = {
+                "match_id": match.match_id,
+                "user_id": driver_id,
+                "user_start_lat": starting_location[0],
+                "user_start_lng": starting_location[1],
+                "user_destination_lat": destination[0],
+                "user_destination_lng": destination[1],
+                "user_status": UserStatus.IN_LOBBY,
+                "user_role": UserRole.DRIVER
+            }
+            try:
+                driver = self.match_crud.add_match_user(driver_data) # ここでコミット
+            except Exception as e:
+                return {"success": False, "error": f"DB保存に失敗しました: {str(e)}"}
             
             # ロビー作成
             lobby = RideLobby(
-                lobby_id=lobby_id, # ロビーID
-                driver_id=driver_id, # ドライバーID
-                starting_location=starting_location, # 出発地
-                destination=destination, # 目的地
-                max_distance=max_distance, # 最大距離
-                max_passengers=max_passengers, # 最大乗客数
-                preferences=preferences # その他の設定
+                lobby_id=match.match_id, # ロビーID
+                driver_id=driver.user_id, # ドライバーID
+                starting_location=(driver.user_start_lat, driver.user_start_lng), # 出発地
+                destination=(driver.user_destination_lat, driver.user_destination_lng), # 目的地
+                max_distance=match.max_distance, # 最大距離
+                max_passengers=match.max_passengers, # 最大乗客数
+                preferences=match.max_passengers, # その他の設定
+                user_status=driver.user_status, # ドライバーのステータス
             )
             
+            # ドライバーの情報をロビーに追加
+            lobby.add_user(driver.user_id, UserRole.DRIVER, starting_location, destination, driver.user_status)
+            
             # ロビーを登録
-            self.ride_lobbies[lobby_id] = lobby
-            self.user_lobbies[driver_id] = lobby_id # ドライバーが所属するロビーを登録
+            self.ride_lobbies[match.match_id] = lobby
+            self.user_lobbies[driver.user_id] = match.match_id # ドライバーが所属するロビーを登録
             
             return {
                 "success": True,
-                "lobby_id": lobby_id,
+                "lobby_id": match.match_id,
                 "lobby": lobby.to_dict()
             }
     
@@ -205,8 +207,18 @@ class MatchingService:
             # ロビーを閉じる
             lobby.status = LobbyStatus.CLOSED
             
+            # データベースでロビーを論理削除
+            result = self.match_crud.delete_match(lobby_id)
+            if result == False:
+                return {"success": False, "error": "データベース上のロビーが見つかりません"}
+            
+            # 関連するMatchUserレコードも論理削除
+            result = self.match_crud.delete_match_users(lobby_id)
+            if result == False:
+                return {"success": False, "error": "データベース上のロビーが見つかりません"}
+            
             # 参加リクエスト中のユーザーに通知
-            for passenger_id in lobby.participants: # keyでループ
+            for passenger_id in lobby.participants:  # keyでループ
                 if passenger_id != driver_id:  # ドライバーは除外
                     if self.connection_manager:
                         await self.connection_manager.send_to_json_user(passenger_id, {
@@ -280,7 +292,7 @@ class MatchingService:
                 "destination_distance": selected["destination_distance"]
             }
     
-    async def request_ride(self, passenger_id: int, lobby_id: str, passenger_location: tuple, passenger_destination: tuple) -> Dict[str, Any]:
+    async def request_ride(self, passenger_id: int, lobby_id: int, passenger_location: tuple, passenger_destination: tuple) -> Dict[str, Any]:
         """乗車者がロビーに参加リクエスト"""
         async with self.lock:
             # ロビーの存在確認
@@ -297,13 +309,35 @@ class MatchingService:
             if passenger_id in self.user_lobbies:
                 return {"success": False, "error": "すでに別のロビーに所属しています"}
             
-            # リクエストを追加
-            if not lobby.add_request(passenger_id, passenger_location, passenger_destination):
-                return {"success": False, "error": "リクエストの追加に失敗しました"}
+            # ロビーの最大乗客数を確認
+            if lobby.is_full():
+                return {"success": False, "error": "ロビーが満員です"}
+            # 乗車リクエストを追加
+            if passenger_id in lobby.participants:
+                return {"success": False, "error": "すでにリクエスト済みです"}
             
+            # データベースに乗客情報を保存
+            user_data = {
+                "match_id": lobby.lobby_id,
+                "user_id": passenger_id,
+                "user_start_lat": passenger_location[0],
+                "user_start_lng": passenger_location[1],
+                "user_destination_lat": passenger_destination[0],
+                "user_destination_lng": passenger_destination[1],
+                "user_status": UserStatus.IN_LOBBY,
+                "user_role": UserRole.PASSENGER
+            }
             
-            # 乗客情報を登録
-            self.user_lobbies[passenger_id] = lobby_id
+            try:
+                user = self.match_crud.add_match_user(user_data)  # データベースに保存
+            except Exception as e:
+                # データベース保存が失敗した場合、メモリから削除
+                return {"success": False, "error": f"DB保存に失敗しました: {str(e)}"}
+            
+            lobby.add_user(passenger_id, UserRole.PASSENGER, (user.user_start_lat, user.user_destination_lng), (user.user_destination_lat, user.user_destination_lng), user_status=user.user_status) # ロビーにリクエストを追加
+            
+            # ユーザーの持つロビーIDを追加
+            self.user_lobbies[user.user_id] = user.match_id
             
             isfull = lobby.is_full()
             
@@ -346,6 +380,11 @@ class MatchingService:
         
             # ロビーが満員になった場合、WebSocketで通知
             if result["isfull"]:
+                try:
+                    self.match_crud.update_match(match_id=lobby_id, status=LobbyStatus.WAITING_APPROVAL)
+                except Exception as e:
+                    return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
+                
                 print("ロビーが満員になりました")
                 lobby = self.ride_lobbies[lobby_id]
                 participants = list(lobby.participants.keys())
@@ -393,11 +432,12 @@ class MatchingService:
             
             return {"success": True, "message": "リクエストをキャンセルしました"}
     
-    async def approve_ride(self, user_id: int, lobby_id: str):
+    async def approve_ride(self, user_id: int, lobby_id: int):
         """マッチングした人を承認する"""
         async with self.lock:
         # ロビーの存在確認
             if lobby_id not in self.ride_lobbies:
+                print(f"match_id_type: {type(lobby_id)}")
                 return {"success": False, "error": "ロビーが存在しません"}
             
             lobby = self.ride_lobbies[lobby_id]
@@ -407,7 +447,11 @@ class MatchingService:
                 return {"success": False, "error": "リクエストが存在しません"}
             
             # 承認処理
-            self.ride_lobbies[lobby_id].participants[user_id].user_status = RequestStatus.CONFIRMED
+            try:
+                self.match_crud.update_match_user(match_id=lobby_id, user_id=user_id, user_status=UserStatus.APPROVED)
+            except Exception as e:
+                return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
+            self.ride_lobbies[lobby_id].participants[user_id].user_status = UserStatus.APPROVED
             
             # 双方承認済みかどうか
             is_confirmed = lobby.get_approve_status()
@@ -416,7 +460,7 @@ class MatchingService:
             if is_confirmed:
                 print("DBへのマッチ保存を開始")
                 print(f"マッチング完了: {lobby.lobby_id} - ロビーのユーザー: {lobby.participants}")
-                match = await self._complete_matching(lobby)
+                match = await self._complete_matching(lobby) # とりあえず今日はここまで。　続きはcomplete_matchingのDBステータスの更新
                 return {"success": True, "match": match}
             
             return {"success": True, "message": "承認されましたが、まだ全員の承認が完了していません"}
@@ -476,12 +520,29 @@ class MatchingService:
         """マッチングを完了してデータベースに保存"""
         # ロビーのステータスを更新
         print(f"マッチング完了: {lobby.lobby_id} - ロビーのユーザー: {lobby.participants}")
-        lobby.status = LobbyStatus.COMPLETED
+        try:
+            match = self.match_crud.update_match(match_id=lobby.lobby_id, status=lobby.status) # DBに保存
+        except Exception as e:
+            return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
+        
+        # ロビーの参加者をマッチング済みに更新
+        users = []
+        for passenger_info in lobby.participants.values():
+            users.append({"user_id": passenger_info.user_id, "user_status": UserStatus.MATCHED})
+        try:
+            self.match_crud.update_match_users_bulk(match_id=lobby.lobby_id, users_data=users) # DBに保存
+        except Exception as e:
+            return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
+        
+        # ロビーのステータスを更新
+        lobby.status = match.status # ロビーのステータスを更新
+        for user in users:
+            lobby.participants[user["user_id"]].user_status = user["user_status"] # ロビーの参加者のステータスを更新
         
         # 案内ルートを生成
         coordinates = [lobby.get_driver().user_location]  # ドライバー出発地
         pickups_deliveries = []
-
+        
         for i, (pid, info) in enumerate(lobby.participants.items()):
             coordinates.append(info.user_location)
             coordinates.append(info.user_destination)
@@ -509,27 +570,20 @@ class MatchingService:
             "route_geojson": geojson
         }
         
-        match = self.match_crud.create_match(match_data)
+        # DBに保存
+        try:
+            match = self.match_crud.update_match(match_id=match.match_id, route_geojson=geojson, status=LobbyStatus.NAVIGATING)
+        except Exception as e:
+            return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
         
-        self.db.flush() # matchのIDを取得するためにflush
-        
-        # 乗車者情報をデータベースに保存
-        users = []
         for passenger_info in lobby.participants.values():
-            users_data = {
-                "match_id": match.match_id,
-                "user_id": passenger_info.user_id,
-                "user_start_lat": passenger_info.user_location[0],
-                "user_start_lng": passenger_info.user_location[1],
-                "user_destination_lat": passenger_info.user_destination[0],
-                "user_destination_lng": passenger_info.user_destination[1],
-                "user_role": passenger_info.user_role,
-            }
-            users.append(MatchUser(**users_data))
+            users.append({"user_id": passenger_info.user_id, "user_status": UserStatus.NAVIGATING})
+
+        try:
+            self.match_crud.update_match_users_bulk(match_id=lobby.lobby_id, users_data=users)
+        except Exception as e:
+            return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
         
-        self.match_crud.add_match_users(users)
-        
-            
         # 参加者全員に通知
         match_participants = list(lobby.participants.keys())
         
@@ -550,8 +604,6 @@ class MatchingService:
         if lobby.lobby_id in self.ride_lobbies:
             del self.ride_lobbies[lobby.lobby_id]
         
-        self.db.commit() # usersまでをトランザクションとするためにここでコミット
-        self.db.refresh(match)
         print(f"DBにマッチを保存: {match.match_id}")
         return match
     

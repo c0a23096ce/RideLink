@@ -25,7 +25,7 @@ class ApproveLobby(BaseModel):
 
 class CreateLobbyResponse(BaseModel):
     success: bool
-    lobby_id: str = None  # Noneを許可する
+    lobby_id: int = None  # Noneを許可する
     lobby: dict = None    # Noneを許可する
     error: str = None     # エラーメッセージ用フィールド
     
