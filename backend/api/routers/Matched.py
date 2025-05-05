@@ -5,6 +5,7 @@ import schemas.routes as route_schema
 from services.MatchedService import MatchedService
 from fastapi.responses import HTMLResponse
 from config import settings
+from services.Enums import UserStatus
 
 router = APIRouter(
     prefix="/matches",
@@ -42,6 +43,27 @@ async def get_match_id(user_id: int, db: Session = Depends(get_db)):
         return {"error": "マッチが見つかりません"}
     
     return {"match_id": match_id}
+
+@router.get("/{user_id}/status")
+async def get_user_status(user_id: int, db: Session = Depends(get_db)):
+    """ユーザーのマッチング状況を取得するエンドポイント
+
+    Args:
+        user_id (int): ユーザーID
+        db (Session, optional): データベースセッション. Defaults to Depends(get_db).
+
+    Returns:
+        dict: マッチング状況
+    """
+    # マッチングサービスのインスタンスを作成
+    matching_service = MatchedService(db)
+    # マッチング状況を取得
+    status = await matching_service.get_user_status(user_id)
+
+    if not status:
+        return {"status": UserStatus.IDOL}
+    
+    return {"status": status}
 
 @router.get("/{match_id}/route") # , response_model=route_schema.RouteResponse
 async def get_route(match_id: int, db: Session = Depends(get_db)):

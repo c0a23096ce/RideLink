@@ -5,6 +5,7 @@ class UserRole:
 
 class UserStatus:
     """ユーザーのステータスを定義する定数"""
+    IDOL = "idol"          # 何もしていない
     SEARCHING = "searching"  # 検索中
     IN_LOBBY = "in_lobby"    # ロビーに参加中
     APPROVED = "approved"    # 自分が承認済み

@@ -1,9 +1,10 @@
+import asyncio
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from routers import User, Matching, Matched, Websocket
-
+from database import reset_database
 # ← ★ WebSocketサービスをインポート
 from services.ConnectionManager import ConnectionManager
 from services.MatchingService import MatchingService
@@ -18,9 +19,10 @@ matching_service.set_connection_manager(connection_manager)
 app.state.connection_manager = connection_manager
 app.state.matching_service = matching_service
 
-# DB初期化
-from database import reset_database
-reset_database()
+@app.on_event("startup")
+async def startup_event():
+    # アプリケーション起動時にデータベースをリセット
+    await reset_database()
 
 # ルーター登録
 app.include_router(User.router)

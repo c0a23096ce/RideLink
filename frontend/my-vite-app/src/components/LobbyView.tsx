@@ -7,15 +7,11 @@ import {
     TextField,
   } from '@mui/material'
   import CloseIcon from '@mui/icons-material/Close'
-  import { useEffect, useState } from 'react'
+  import { useState } from 'react'
   import apiClient from '../lib/apiClient'
-  import { useNavigate } from 'react-router-dom'
-  import { useSocket } from '../contexts/WebSocketContext'
   import MapSection from './MapSection'
   
   export default function LobbyView() {
-    const navigate = useNavigate()
-    const socket = useSocket()
     const [openMap, setOpenMap] = useState(false)
     const [isJoining, setIsJoining] = useState(false)
     const [searchOrigin, setSearchOrigin] = useState('')
@@ -23,21 +19,7 @@ import {
     const [destination, setDestination] = useState<[number, number] | null>(null)
     const [origin, setOrigin] = useState<[number, number] | null>(null)
     const [focus, setFocus] = useState<'origin' | 'destination'>('origin')
-  
-    useEffect(() => {
-      if (!socket) return
-      socket.onmessage = (event) => {
-        const data = JSON.parse(event.data)
-        console.log('WebSocketメッセージ受信:', data)
-        if (data.type === 'lobby_full') {
-          alert(data.message)
-          navigate(`/lobbies/${data.lobby_id}/approved`)
-        }
-      }
-      return () => {
-        socket.onmessage = null
-      }
-    }, [socket, navigate])
+
   
     const handleGeolocate = () => {
       navigator.geolocation.getCurrentPosition(

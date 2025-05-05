@@ -9,9 +9,9 @@ class RouteGenerateService:
         self,
         api_key: str, # MapboxのAPIキー
         coordinates: List[Tuple[float, float]], # 各地点の (latitude, longitude) のリスト
-        pickups_deliveries: List[Tuple[int, int]], # 拾い上げる地点と降ろす地点のインデックスのリスト
         start_index: int, # ドライバーの開始地点のインデックス
-        end_index: int # ドライバーの目的地のインデックス
+        end_index: int ,# ドライバーの目的地のインデックス
+        pickups_deliveries: List[Tuple[int, int]] = [] # 拾い上げる地点と降ろす地点のインデックスのリスト
     ):
         """
         :param api_key: MapboxのAPIキー

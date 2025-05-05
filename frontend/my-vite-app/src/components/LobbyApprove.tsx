@@ -1,15 +1,13 @@
+// src/components/LobbyApprove.tsx
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import apiClient from '../lib/apiClient'
 import { UserCardList } from './card'
 import { LobbyUser } from './card/UserCard'
 import { Box, Button } from '@mui/material'
-import { useSocket } from '../contexts/WebSocketContext'
 
 export default function LobbyUserPage() {
-  const navigate = useNavigate()
   const { lobby_id } = useParams()
-  const socket = useSocket()
   const [users, setUsers] = useState<LobbyUser[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -33,23 +31,6 @@ export default function LobbyUserPage() {
 
     fetchUsers()
   }, [lobby_id])
-
-  useEffect(() => {
-    if (!socket) return
-
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      console.log('WebSocketメッセージ受信:', data)
-      if (data.type === 'lobby_approved') {
-        alert(data.message)
-        navigate(`/matches/${data.match_id}/navigation`)
-      }
-    }
-
-    return () => {
-      socket.onmessage = null
-    }
-  }, [socket, navigate])
 
   const handleApprove = async () => {
     try {
@@ -95,3 +76,4 @@ export default function LobbyUserPage() {
     </main>
   )
 }
+

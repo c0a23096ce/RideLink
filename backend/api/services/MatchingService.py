@@ -34,7 +34,9 @@ class RideLobby:
                  user_status: str,
                  max_distance: float,
                  max_passengers: int,
-                 preferences: Dict[str, Any] = {}
+                 preferences: Dict[str, Any] = {},
+                 route_geojson: Optional[Dict] = None,  # ルートのGeoJSON
+                 route_coordinates: Optional[List[Tuple[float, float]]] = None,  # ルート上の座標点リスト
                  ):
         self.lobby_id = lobby_id # ロビーID
         self.max_distance = max_distance # 最大距離
@@ -42,6 +44,9 @@ class RideLobby:
         self.preferences = preferences # その他の設定
         self.created_at = time.time()
         self.status = LobbyStatus.OPEN
+        # ルート情報を追加
+        self.route_geojson = route_geojson
+        self.route_coordinates = route_coordinates or []
         
         # ロビーの人物管理: {passenger_id: {"status": status, "timestamp": time, passenger_location: (lat, lng), passenger_destination: (lat, lng)}}
         # 承認状態も含む
@@ -135,9 +140,29 @@ class MatchingService:
         """ドライバーがロビーを作成"""
         async with self.lock:
             # ドライバーが既にロビーを持っているか確認
-            active_lobby = self.match_crud.get_active_lobby_by_driver(driver_id)
+            active_lobby = await self.match_crud.get_active_lobby_by_driver(driver_id)
             if active_lobby:
                 return {"success": False, "error": "すでにロビーに所属しています"}
+            
+            # 出発地から目的地へのルートを生成
+            route_geojson = None
+            route_coordinates = []
+            if (destination):
+                route_service = RouteGenerateService(
+                    api_key=settings.mapbox_api_key,
+                    coordinates=[starting_location, destination],
+                    
+                    start_index=0,
+                    end_index=1
+                )
+                route_geojson = await route_service.get_geojson_route()
+                if route_geojson and 'features' in route_geojson:
+                    # GeoJSONからルート座標を抽出
+                    for feature in route_geojson['features']:
+                        if feature['geometry']['type'] == 'LineString':
+                            # LineStringの座標配列をタプルのリストに変換
+                            # GeoJSONでは[lng, lat]形式なので、[lat, lng]に変換する
+                            route_coordinates = [(coord[1], coord[0]) for coord in feature['geometry']['coordinates']]
             
             # DBにロビーを保存
             match_data = {
@@ -145,9 +170,10 @@ class MatchingService:
                 "max_passengers": max_passengers,
                 "max_distance": max_distance,
                 "preferences": preferences if preferences else {},
+                "route_geojson": route_geojson
             }
             try:
-                match = self.match_crud.create_match(match_data) # コミットはしていない
+                match = await self.match_crud.create_match(match_data) # コミットはしていない
             except Exception as e:
                 return {"success": False, "error": f"DB保存に失敗しました: {str(e)}"}
             
@@ -156,34 +182,33 @@ class MatchingService:
                 "user_id": driver_id,
                 "user_start_lat": starting_location[0],
                 "user_start_lng": starting_location[1],
-                "user_destination_lat": destination[0],
-                "user_destination_lng": destination[1],
+                "user_destination_lat": destination[0] if destination else None,
+                "user_destination_lng": destination[1] if destination else None,
                 "user_status": UserStatus.IN_LOBBY,
                 "user_role": UserRole.DRIVER
             }
             try:
-                driver = self.match_crud.add_match_user(driver_data) # ここでコミット
+                driver = await self.match_crud.add_match_user(driver_data) # ここでコミット
             except Exception as e:
                 return {"success": False, "error": f"DB保存に失敗しました: {str(e)}"}
             
             # ロビー作成
             lobby = RideLobby(
-                lobby_id=match.match_id, # ロビーID
-                driver_id=driver.user_id, # ドライバーID
-                starting_location=(driver.user_start_lat, driver.user_start_lng), # 出発地
-                destination=(driver.user_destination_lat, driver.user_destination_lng), # 目的地
-                max_distance=match.max_distance, # 最大距離
-                max_passengers=match.max_passengers, # 最大乗客数
-                preferences=match.max_passengers, # その他の設定
-                user_status=driver.user_status, # ドライバーのステータス
+                lobby_id=match.match_id,
+                driver_id=driver.user_id,
+                starting_location=(driver.user_start_lat, driver.user_start_lng),
+                destination=(driver.user_destination_lat, driver.user_destination_lng),
+                max_distance=match.max_distance,
+                max_passengers=match.max_passengers,
+                preferences=match.max_passengers,
+                user_status=driver.user_status,
+                route_geojson=route_geojson,
+                route_coordinates=route_coordinates
             )
-            
-            # ドライバーの情報をロビーに追加
-            lobby.add_user(driver.user_id, UserRole.DRIVER, starting_location, destination, driver.user_status)
             
             # ロビーを登録
             self.ride_lobbies[match.match_id] = lobby
-            self.user_lobbies[driver.user_id] = match.match_id # ドライバーが所属するロビーを登録
+            self.user_lobbies[driver.user_id] = match.match_id
             
             return {
                 "success": True,
@@ -208,12 +233,12 @@ class MatchingService:
             lobby.status = LobbyStatus.CLOSED
             
             # データベースでロビーを論理削除
-            result = self.match_crud.delete_match(lobby_id)
+            result = await self.match_crud.delete_match(lobby_id)
             if result == False:
                 return {"success": False, "error": "データベース上のロビーが見つかりません"}
             
             # 関連するMatchUserレコードも論理削除
-            result = self.match_crud.delete_match_users(lobby_id)
+            result = await self.match_crud.delete_match_users(lobby_id)
             if result == False:
                 return {"success": False, "error": "データベース上のロビーが見つかりません"}
             
@@ -222,7 +247,7 @@ class MatchingService:
                 if passenger_id != driver_id:  # ドライバーは除外
                     if self.connection_manager:
                         await self.connection_manager.send_to_json_user(passenger_id, {
-                            "type": "lobby_closed",
+                            "type": "status_update",
                             "lobby_id": lobby_id,
                             "message": "ドライバーがロビーを閉じました"
                         })
@@ -244,9 +269,9 @@ class MatchingService:
                                         passenger_location: Tuple[float, float],
                                         passenger_destination: Optional[Tuple[float, float]] = None,
                                         max_distance: float = 5.0) -> Optional[Dict[str, Any]]:
-        """距離制限内のランダムなロビーを見つける（出発地と目的地の両方を考慮）"""
+        """距離制限内のランダムなロビーを見つける（ドライバーのルートを考慮）"""
         async with self.lock:
-            # 参加可能なロビー（距離制限内かつオープン状態）をフィルタリング
+            # 参加可能なロビーをフィルタリング
             available_lobbies = []
             
             for lobby in self.ride_lobbies.values():
@@ -255,41 +280,94 @@ class MatchingService:
                     continue
                 
                 # 既にリクエスト済みのロビーは除外
-                if passenger_id in lobby.participants: # ドライバーも入る
+                if passenger_id in lobby.participants:
                     continue
                 
                 driver_id = lobby.get_driver().user_id
+                driver_data = lobby.participants[driver_id]
                 
-                # 出発地の距離チェック
-                start_distance = await self.calculate_distance(passenger_location, lobby.participants[driver_id].user_location)
+                # ルート情報があるか確認
+                if not lobby.route_coordinates or len(lobby.route_coordinates) < 2:
+                    # ルート情報がない場合は従来の距離計算
+                    start_distance = await self.calculate_distance(passenger_location, driver_data.user_location)
+                    
+                    destination_distance = float('inf')
+                    if passenger_destination and driver_data.user_destination:
+                        destination_distance = await self.calculate_distance(passenger_destination, driver_data.user_destination)
+                    
+                    if start_distance <= max_distance and (destination_distance <= max_distance or passenger_destination is None):
+                        available_lobbies.append({
+                            "lobby": lobby,
+                            "start_distance": start_distance,
+                            "destination_distance": destination_distance if destination_distance != float('inf') else None,
+                            "route_match": False
+                        })
+                    continue
                 
-                # 目的地の距離チェック
-                destination_distance = float('inf')
-                if passenger_destination and lobby.participants[driver_id].user_destination:
-                    destination_distance = await self.calculate_distance(passenger_destination, lobby.participants[driver_id].user_destination)
+                # 乗客の出発地がドライバーのルート上にあるか確認
+                pickup_point_idx, pickup_distance = await self._find_closest_point_on_route(
+                    passenger_location, 
+                    lobby.route_coordinates, 
+                    max_distance
+                )
                 
-                # 出発地と目的地の両方が距離制限内の場合のみ追加
-                if start_distance <= max_distance and (destination_distance <= max_distance or passenger_destination is None or lobby.destination is None):
-                    available_lobbies.append({
-                        "lobby": lobby,
-                        "start_distance": start_distance,
-                        "destination_distance": destination_distance if destination_distance != float('inf') else None
-                    })
+                if pickup_point_idx == -1:
+                    continue  # ルート上に乗車地点が見つからない
+                
+                # 乗客の目的地がドライバーのルート上にあるか確認
+                dropoff_point_idx = -1
+                dropoff_distance = float('inf')
+                
+                if passenger_destination:
+                    dropoff_point_idx, dropoff_distance = await self._find_closest_point_on_route(
+                        passenger_destination,
+                        lobby.route_coordinates,
+                        max_distance
+                    )
+                    
+                    # 目的地が見つからない場合はスキップ
+                    if dropoff_point_idx == -1:
+                        continue
+                    
+                    # 逆走防止: 乗車地点が降車地点よりも後にある場合はスキップ
+                    if pickup_point_idx >= dropoff_point_idx:
+                        continue
+                
+                # 条件を満たすロビーを追加
+                available_lobbies.append({
+                    "lobby": lobby,
+                    "start_distance": pickup_distance,
+                    "destination_distance": dropoff_distance if dropoff_distance != float('inf') else None,
+                    "pickup_idx": pickup_point_idx,
+                    "dropoff_idx": dropoff_point_idx,
+                    "route_match": True
+                })
             
             if not available_lobbies:
                 return None
             
-            # 出発地の距離が近い順にソート
-            available_lobbies.sort(key=lambda x: x["start_distance"])
+            # ルートマッチのあるロビーを優先
+            route_matches = [l for l in available_lobbies if l.get("route_match", False)]
             
-            # 距離が近い上位3つのロビーからランダムに選択（分散させるため）
-            top_count = min(3, len(available_lobbies))
-            selected = random.choice(available_lobbies[:top_count])
+            if route_matches:
+                # ルートマッチのあるロビーから選択
+                # 出発地の距離が近い順にソート
+                route_matches.sort(key=lambda x: x["start_distance"])
+                
+                # 距離が近い上位3つのロビーからランダムに選択
+                top_count = min(3, len(route_matches))
+                selected = random.choice(route_matches[:top_count])
+            else:
+                # ルートマッチがない場合は従来の方法で選択
+                available_lobbies.sort(key=lambda x: x["start_distance"])
+                top_count = min(3, len(available_lobbies))
+                selected = random.choice(available_lobbies[:top_count])
             
             return {
                 "lobby": selected["lobby"].to_dict(),
                 "start_distance": selected["start_distance"],
-                "destination_distance": selected["destination_distance"]
+                "destination_distance": selected["destination_distance"],
+                "route_match": selected.get("route_match", False)
             }
     
     async def request_ride(self, passenger_id: int, lobby_id: int, passenger_location: tuple, passenger_destination: tuple) -> Dict[str, Any]:
@@ -329,7 +407,7 @@ class MatchingService:
             }
             
             try:
-                user = self.match_crud.add_match_user(user_data)  # データベースに保存
+                user = await self.match_crud.add_match_user(user_data)  # データベースに保存
             except Exception as e:
                 # データベース保存が失敗した場合、メモリから削除
                 return {"success": False, "error": f"DB保存に失敗しました: {str(e)}"}
@@ -349,12 +427,12 @@ class MatchingService:
             }
     
     async def request_random_ride(self, 
-                             passenger_id: int, 
-                             passenger_location: Tuple[float, float],
-                             passenger_destination: Optional[Tuple[float, float]] = None, 
-                             max_distance: float = 5.0) -> Dict[str, Any]:
-        """乗客が距離内のランダムなロビーに参加リクエスト（目的地の距離も考慮）"""
-        # まず、距離内のランダムなロビーを見つける
+                         passenger_id: int, 
+                         passenger_location: Tuple[float, float],
+                         passenger_destination: Optional[Tuple[float, float]] = None, 
+                         max_distance: float = 5.0) -> Dict[str, Any]:
+        """乗客が距離内のランダムなロビーに参加リクエスト（ドライバーのルートを考慮）"""
+        # 距離内のランダムなロビーを見つける
         lobby_info = await self.find_random_lobby_by_distance(
             passenger_id, 
             passenger_location, 
@@ -363,25 +441,22 @@ class MatchingService:
         )
         
         if not lobby_info:
-            return {"success": False, "error": "距離内に利用可能なロビーが見つかりませんでした"}
+            return {"success": False, "error": "条件に合うロビーが見つかりませんでした"}
         
         # 見つかったロビーにリクエスト
         lobby_id = lobby_info["lobby"]["lobby_id"]
         result = await self.request_ride(passenger_id, lobby_id, passenger_location, passenger_destination)
         
-        print(f"ロビー情報: {result}")
-        
-        
-        # 距離情報を追加
+        # 距離情報と経路マッチ情報を追加
         if result["success"]:
             result["start_distance"] = lobby_info["start_distance"]
             result["destination_distance"] = lobby_info["destination_distance"]
+            result["route_match"] = lobby_info.get("route_match", False)
         
-        
-            # ロビーが満員になった場合、WebSocketで通知
+            # ロビーが満員になった場合の処理
             if result["isfull"]:
                 try:
-                    self.match_crud.update_match(match_id=lobby_id, status=LobbyStatus.WAITING_APPROVAL)
+                    await self.match_crud.update_match(match_id=lobby_id, status=LobbyStatus.WAITING_APPROVAL)
                 except Exception as e:
                     return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
                 
@@ -393,7 +468,7 @@ class MatchingService:
                 for user_id in participants:
                     if self.connection_manager:
                         await self.connection_manager.send_to_json_user(user_id, {
-                            "type": "lobby_full",
+                            "type": "status_update",
                             "lobby_id": lobby_id,
                             "message": "ロビーが満員になりました。マッチングが確定しました。",
                         })
@@ -448,7 +523,7 @@ class MatchingService:
             
             # 承認処理
             try:
-                self.match_crud.update_match_user(match_id=lobby_id, user_id=user_id, user_status=UserStatus.APPROVED)
+                await self.match_crud.update_match_user(match_id=lobby_id, user_id=user_id, user_status=UserStatus.APPROVED)
             except Exception as e:
                 return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
             self.ride_lobbies[lobby_id].participants[user_id].user_status = UserStatus.APPROVED
@@ -508,9 +583,11 @@ class MatchingService:
                 "participants": [user.user_id for user in lobby.participants.values()]
             }
     
-    async def get_lobby_users(self, lobby_id: str) -> List[int]:
+    async def get_lobby_users(self, lobby_id: int) -> List[int]:
         """ロビーに参加しているユーザーのIDを取得"""
         if lobby_id not in self.ride_lobbies:
+            print(f"ロビーが存在しません: {lobby_id}")
+            print(f"lobby_type: {type(lobby_id)}")
             return []
         
         lobby = self.ride_lobbies[lobby_id]
@@ -521,7 +598,7 @@ class MatchingService:
         # ロビーのステータスを更新
         print(f"マッチング完了: {lobby.lobby_id} - ロビーのユーザー: {lobby.participants}")
         try:
-            match = self.match_crud.update_match(match_id=lobby.lobby_id, status=lobby.status) # DBに保存
+            match = await self.match_crud.update_match(match_id=lobby.lobby_id, status=lobby.status) # DBに保存
         except Exception as e:
             return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
         
@@ -530,7 +607,7 @@ class MatchingService:
         for passenger_info in lobby.participants.values():
             users.append({"user_id": passenger_info.user_id, "user_status": UserStatus.MATCHED})
         try:
-            self.match_crud.update_match_users_bulk(match_id=lobby.lobby_id, users_data=users) # DBに保存
+            await self.match_crud.update_match_users_bulk(match_id=lobby.lobby_id, users_data=users) # DBに保存
         except Exception as e:
             return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
         
@@ -572,7 +649,7 @@ class MatchingService:
         
         # DBに保存
         try:
-            match = self.match_crud.update_match(match_id=match.match_id, route_geojson=geojson, status=LobbyStatus.NAVIGATING)
+            match = await self.match_crud.update_match(match_id=match.match_id, route_geojson=geojson, status=LobbyStatus.NAVIGATING)
         except Exception as e:
             return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
         
@@ -580,7 +657,7 @@ class MatchingService:
             users.append({"user_id": passenger_info.user_id, "user_status": UserStatus.NAVIGATING})
 
         try:
-            self.match_crud.update_match_users_bulk(match_id=lobby.lobby_id, users_data=users)
+            await self.match_crud.update_match_users_bulk(match_id=lobby.lobby_id, users_data=users)
         except Exception as e:
             return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
         
@@ -590,8 +667,9 @@ class MatchingService:
         for user_id in match_participants:
             # WebSocketで通知
             if self.connection_manager:
+                print(f"送信するマッチID: {match.match_id}")
                 await self.connection_manager.send_to_json_user(user_id, {
-                    "type": "lobby_approved",
+                    "type": "status_update",
                     "match_id": match.match_id,
                     "participants": match_participants
                 })
@@ -623,3 +701,35 @@ class MatchingService:
             self.db.refresh(match)
             
             return {"success": True, "message": "ルート案内が完了しました", "match_id": match_id}
+
+    async def _find_closest_point_on_route(self, 
+                                     point: Tuple[float, float], 
+                                     route_coordinates: List[Tuple[float, float]],
+                                     max_distance: float) -> Tuple[int, float]:
+        """
+        ルート上で指定された点に最も近い点のインデックスと距離を返す
+        
+        Args:
+            point: 基準点の座標 (lat, lng)
+            route_coordinates: ルート上の座標点リスト [(lat, lng), ...]
+            max_distance: 許容最大距離（km）
+            
+        Returns:
+            (最も近い点のインデックス, 距離) - 見つからない場合は (-1, inf)
+        """
+        if not route_coordinates:
+            return -1, float('inf')
+        
+        min_distance = float('inf')
+        closest_idx = -1
+        
+        for i, route_point in enumerate(route_coordinates):
+            distance = await self.calculate_distance(point, route_point)
+            if distance < min_distance:
+                min_distance = distance
+                closest_idx = i
+        
+        if min_distance <= max_distance:
+            return closest_idx, min_distance
+        else:
+            return -1, float('inf')

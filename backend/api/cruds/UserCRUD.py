@@ -1,21 +1,19 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from typing import Optional, List, Dict, Any
-
 from models.models import User
 
-
 class UserCRUD:
-    def __init__(self, db_session: Session):
+    def __init__(self, db_session: AsyncSession):
         """
         UserCRUDクラスを初期化します
         
         Args:
-            db_session: SQLAlchemy データベースセッション
+            db_session: SQLAlchemy 非同期データベースセッション
         """
         self.db_session = db_session
 
-    def create_user(self, user_data: Dict[str, Any]) -> User:
+    async def create_user(self, user_data: Dict[str, Any]) -> User:
         """
         新規ユーザーを作成します
         
@@ -27,11 +25,11 @@ class UserCRUD:
         """
         user = User(**user_data)
         self.db_session.add(user)
-        self.db_session.commit()
-        self.db_session.refresh(user)
+        await self.db_session.commit()
+        await self.db_session.refresh(user)
         return user
 
-    def get_user(self, user_id: int) -> Optional[User]:
+    async def get_user(self, user_id: int) -> Optional[User]:
         """
         指定IDのユーザーを取得します
         
@@ -41,9 +39,12 @@ class UserCRUD:
         Returns:
             ユーザーオブジェクト、または存在しない場合はNone
         """
-        return self.db_session.query(User).filter(User.user_id == user_id).first()
+        result = await self.db_session.execute(
+            select(User).where(User.user_id == user_id)
+        )
+        return result.scalar_one_or_none()
 
-    def get_user_by_email(self, email: str) -> Optional[User]:
+    async def get_user_by_email(self, email: str) -> Optional[User]:
         """
         指定メールアドレスのユーザーを取得します
         
@@ -53,12 +54,12 @@ class UserCRUD:
         Returns:
             ユーザーオブジェクト、または存在しない場合はNone
         """
-        print(f"検索対象のemail: {email}")
-        print(f"クエリ対象のname: {(self.db_session.query(User).filter(User.email == email).first()).name}")
-        print(f"クエリ対象のtype: {type(self.db_session.query(User).filter(User.email == email).first())}")
-        return self.db_session.query(User).filter(User.email == email).first()
+        result = await self.db_session.execute(
+            select(User).where(User.email == email)
+        )
+        return result.scalar_one_or_none()
 
-    def update_user(self, user_id: int, update_data: Dict[str, Any]) -> Optional[User]:
+    async def update_user(self, user_id: int, update_data: Dict[str, Any]) -> Optional[User]:
         """
         ユーザー情報を更新します
         
@@ -69,18 +70,18 @@ class UserCRUD:
         Returns:
             更新されたユーザーオブジェクト、または存在しない場合はNone
         """
-        user = self.get_user(user_id)
+        user = await self.get_user(user_id)
         if not user:
             return None
             
         for key, value in update_data.items():
             setattr(user, key, value)
             
-        self.db_session.commit()
-        self.db_session.refresh(user)
+        await self.db_session.commit()
+        await self.db_session.refresh(user)
         return user
 
-    def delete_user(self, user_id: int) -> bool:
+    async def delete_user(self, user_id: int) -> bool:
         """
         ユーザーを削除します
         
@@ -90,42 +91,10 @@ class UserCRUD:
         Returns:
             削除に成功した場合はTrue、それ以外はFalse
         """
-        user = self.get_user(user_id)
+        user = await self.get_user(user_id)
         if not user:
             return False
             
-        self.db_session.delete(user)
-        self.db_session.commit()
+        await self.db_session.delete(user)
+        await self.db_session.commit()
         return True
-
-    # def search_users(self, search_criteria: Dict[str, Any], skip: int = 0, limit: int = 100) -> List[User]:
-    #     """
-    #     条件に基づいてユーザーを検索します
-        
-    #     Args:
-    #         search_criteria: 検索条件の辞書
-    #         skip: スキップするレコード数
-    #         limit: 取得する最大レコード数
-            
-    #     Returns:
-    #         ユーザーオブジェクトのリスト
-    #     """
-    #     query = self.db_session.query(User)
-        
-    #     # 検索条件を適用
-    #     for key, value in search_criteria.items():
-    #         if hasattr(User, key):
-    #             query = query.filter(getattr(User, key).like(f"%{value}%"))
-                
-    #     # 名前とメールアドレスでの部分一致検索
-    #     if "search_text" in search_criteria:
-    #         search_text = search_criteria["search_text"]
-    #         query = query.filter(
-    #             or_(
-    #                 User.name.like(f"%{search_text}%"),
-    #                 User.email.like(f"%{search_text}%")
-    #             )
-    #         )
-                
-    #     # ページネーション
-    #     return query.offset(skip).limit(limit).all()

@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
-from database import SessionLocal
+from database import AsyncSessionLocal
 from schemas.users import TokenData
 from services.UserService import UserService
 from schemas.users import User as UserSchema
@@ -12,7 +12,8 @@ from schemas.users import User as UserSchema
 from dotenv import load_dotenv
 
 import os
-
+from typing import AsyncGenerator
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Request
 from services.MatchingService import MatchingService
 from services.ConnectionManager import ConnectionManager
@@ -27,15 +28,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES = os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES")
 # OAuth2のトークンURLを設定
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/user/login")
 
-def get_db() -> Generator:
+async def get_db() -> AsyncGenerator:
     """
-    リクエストごとにデータベースセッションを提供する依存性関数
+    データベースセッションを取得するための依存関数
     """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    async with AsyncSessionLocal() as session:
+        yield session
+
 
 def get_token_data(token: str = Depends(oauth2_scheme)) -> TokenData:
     """

@@ -2,34 +2,40 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import text
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
 
 from models.models import Base
+import asyncio
 
 # MySQL接続URL
-SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root@db:3306/demo?charset=utf8"
+# この部分だけ変える
+SQLALCHEMY_DATABASE_URL = "mysql+aiomysql://root@db:3306/demo?charset=utf8"
 
 # エンジン作成
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, echo=True
-)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine = create_async_engine(SQLALCHEMY_DATABASE_URL, echo=True)
 
-def reset_database():
+AsyncSessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+    class_=AsyncSession
+)
+
+
+async def reset_database():
     """
     外部キー制約を無効化してデータベースをリセット
     """
-    with engine.connect() as connection:
+    async with engine.begin() as connection:
         # 外部キー制約を無効化
-        connection.execute(text("SET FOREIGN_KEY_CHECKS=0"))
+        await connection.execute(text("SET FOREIGN_KEY_CHECKS=0"))
         
         # 全テーブルを削除
-        Base.metadata.drop_all(bind=connection)
+        await connection.run_sync(Base.metadata.drop_all)
         
         # テーブルを再作成
-        Base.metadata.create_all(bind=connection)
+        await connection.run_sync(Base.metadata.create_all)
         
         # 外部キー制約を有効化
-        connection.execute(text("SET FOREIGN_KEY_CHECKS=1"))
-        
-        # 変更をコミット
-        connection.commit()
+        await connection.execute(text("SET FOREIGN_KEY_CHECKS=1"))
