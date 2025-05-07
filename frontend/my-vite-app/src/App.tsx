@@ -5,6 +5,7 @@ import LoginPage from './pages/login'
 import RegisterPage from './pages/register'
 import LobbyPage from './pages/lobbies'
 import LobbyApprovedPage from './pages/lobbyapproved'
+import NavigationPage from './pages/navigation'
 
 export default function App() {
   return (
@@ -35,6 +36,14 @@ export default function App() {
         element={
           <Layout>
             <LobbyApprovedPage />
+          </Layout>
+        }
+      />
+      <Route
+        path="/matches/:match_id/navigation"
+        element={
+          <Layout>
+            <NavigationPage />
           </Layout>
         }
       />

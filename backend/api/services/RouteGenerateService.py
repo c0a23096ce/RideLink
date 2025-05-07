@@ -112,6 +112,7 @@ class RouteGenerateService:
                 index = solution.Value(routing.NextVar(index))
             route_order.append(manager.IndexToNode(index))
             print("訪問順序計算完了")
+            print(f"訪問順序: {route_order}")
             return route_order
         else:
             return None
@@ -129,23 +130,37 @@ class RouteGenerateService:
 
         if not route_order:
             return None
-
+        
         ordered_coords = [self.coordinates[i] for i in route_order]
+        
+        
         coord_str = ";".join([f"{lon},{lat}" for lat, lon in ordered_coords])
-
+        
+        print(f"リクエストに使うもの: {ordered_coords}")
+        
         url = f"https://api.mapbox.com/directions/v5/mapbox/driving/{coord_str}"
         params = {
             "access_token": self.api_key,
             "geometries": "geojson",
-            "overview": "full"
+            "overview": "full",
+            "steps": "true"
         }
 
         async with httpx.AsyncClient() as client:
-            response = await client.get(url, params=params)
+            request = client.build_request("GET", url, params=params)
+            print(f"Request URL: {request.url}")
+            response = await client.send(request)
             response.raise_for_status()
             data = response.json()
         
-        print(f'return_data: {data["routes"][0]["geometry"]}')
-        return data["routes"][0]["geometry"]
+        # print(f'return_data: {data["routes"][0]["geometry"]}')
+        
+        for i, leg in enumerate(data["routes"][0]["legs"]):
+            # print(f"=== 区間 {i + 1} ===")
+            for j, step in enumerate(leg["steps"]):
+                instruction = step.get("maneuver", {}).get("instruction")
+                location = step.get("maneuver", {}).get("location")
+                # print(f"  Step {j + 1}: {instruction} @ {location}")
+        return data
 
 

@@ -2,19 +2,24 @@
 import { create } from 'zustand'
 
 type MatchStatusState = {
-  userId: number | null               // ユーザーID
-  status: string | null               // ステータス (例: 'approved')
-  setUserId: (userId: number) => void // ユーザーIDをセット
-  setStatus: (status: string | null) => void // ステータスをセット
-  reset: () => void                   // 状態をリセット
+  userId: number | null
+  status: string | null
+  matchId: string | null      // matchIdを保存
+  setUserId: (userId: number) => void
+  setStatus: (status: string | null) => void
+  setMatchId: (matchId: string | null) => void
+  reset: () => void
 }
 
 export const useMatchStatusStore = create<MatchStatusState>((set) => ({
-  userId: null,
+  userId: 2, // テスト用に初期値を設定
   status: null,
+  matchId: null,
   setUserId: (userId) => set({ userId }),
   setStatus: (status) => set({ status }),
-  reset: () => set({ userId: null, status: null }),
+  setMatchId: (matchId) => set({ matchId }),
+  reset: () => set({ userId: null, status: null, matchId: null }),
 }))
+
 
 

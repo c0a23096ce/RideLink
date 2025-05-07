@@ -49,3 +49,16 @@ class MatchedService:
             return None
         
         return match.route_geojson
+    
+    async def get_users_by_match(self, match_id: int) -> Optional[Dict[str, Any]]:
+        """
+        マッチIDからユーザー情報を取得する
+        :param match_id: マッチID
+        :return: ユーザー情報
+        """
+        # マッチIDからユーザー情報を取得
+        users = await self.match_crud.get_users_by_match(match_id)
+        if not users:
+            return None
+        
+        return users

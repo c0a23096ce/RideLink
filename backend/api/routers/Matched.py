@@ -67,7 +67,7 @@ async def get_user_status(user_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{match_id}/route") # , response_model=route_schema.RouteResponse
 async def get_route(match_id: int, db: Session = Depends(get_db)):
-    """決定したマッチのルート情報を取得する
+    """決定したマッチのルート情報とユーザーの位置を取得する
 
     Args:
         match_id : マッチID
@@ -85,5 +85,17 @@ async def get_route(match_id: int, db: Session = Depends(get_db)):
     if not route:
         return {"error": "ルート情報が見つかりません"}
     
-    return {"route": route}
+    users = await matching_service.get_users_by_match(match_id)
+    
+    
+    users_list = []
+    for user in users:
+        users_list.append({
+            "user_id": user.user_id,
+            "start": [user.user_start_lat, user.user_start_lng],
+            "destination": [user.user_destination_lat, user.user_destination_lng],
+            "role": user.user_role,
+        })
+    
+    return {"route": route, "users": users_list}
 

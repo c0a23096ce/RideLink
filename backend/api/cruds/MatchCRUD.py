@@ -44,6 +44,40 @@ class MatchCRUD:
             updated_at=match.updated_at.isoformat() if match.updated_at else None,
         )
     
+    async def get_users_by_match(self, match_id: int) -> List[MatchUserDTO]:
+        """
+        マッチIDからユーザー情報を取得する
+        
+        Args:
+            match_id: マッチID
+        
+        Returns:
+            ユーザーDTOのリスト
+        """
+        result = await self.db_session.execute(
+            select(MatchUser).where(MatchUser.match_id == match_id, MatchUser.is_deleted == False)
+        )
+        match_users = result.scalars().all()
+        
+        return [
+            MatchUserDTO(
+                id=match_user.id,
+                match_id=match_user.match_id,
+                user_id=match_user.user_id,
+                user_start_lat=match_user.user_start_lat,
+                user_start_lng=match_user.user_start_lng,
+                user_destination_lat=match_user.user_destination_lat,
+                user_destination_lng=match_user.user_destination_lng,
+                user_role=match_user.user_role,
+                user_status=match_user.user_status,
+                is_deleted=match_user.is_deleted,
+                created_at=match_user.created_at.isoformat() if match_user.created_at else None,
+                updated_at=match_user.updated_at.isoformat() if match_user.updated_at else None,
+            )
+            for match_user in match_users
+        ]
+        
+    
     async def get_match_raw(self, match_id: int) -> Optional[MatchDTO]:
         """
         ユーザーのルートを取得する

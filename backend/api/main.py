@@ -23,12 +23,15 @@ app.state.matching_service = matching_service
 async def startup_event():
     # アプリケーション起動時にデータベースをリセット
     await reset_database()
+    import logging
+    logging.getLogger("sqlalchemy.engine").disabled = True
 
 # ルーター登録
 app.include_router(User.router)
 app.include_router(Matching.router)
 app.include_router(Matched.router)
 app.include_router(Websocket.router)
+
 
 # バリデーションエラーをJSONで返す
 @app.exception_handler(RequestValidationError)

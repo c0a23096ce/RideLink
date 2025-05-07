@@ -146,7 +146,6 @@ class MatchingService:
             
             # 出発地から目的地へのルートを生成
             route_geojson = None
-            route_coordinates = []
             if (destination):
                 route_service = RouteGenerateService(
                     api_key=settings.mapbox_api_key,
@@ -155,14 +154,13 @@ class MatchingService:
                     start_index=0,
                     end_index=1
                 )
-                route_geojson = await route_service.get_geojson_route()
-                if route_geojson and 'features' in route_geojson:
-                    # GeoJSONからルート座標を抽出
-                    for feature in route_geojson['features']:
-                        if feature['geometry']['type'] == 'LineString':
-                            # LineStringの座標配列をタプルのリストに変換
-                            # GeoJSONでは[lng, lat]形式なので、[lat, lng]に変換する
-                            route_coordinates = [(coord[1], coord[0]) for coord in feature['geometry']['coordinates']]
+                route_data = await route_service.get_geojson_route()
+                route_coordinates = []
+
+                if route_data and 'routes' in route_data:
+                    geometry = route_data['routes'][0]['geometry']
+                    if geometry['type'] == 'LineString':
+                        route_coordinates = [(coord[1], coord[0]) for coord in geometry['coordinates']]
             
             # DBにロビーを保存
             match_data = {
@@ -202,7 +200,7 @@ class MatchingService:
                 max_passengers=match.max_passengers,
                 preferences=match.max_passengers,
                 user_status=driver.user_status,
-                route_geojson=route_geojson,
+                route_geojson=route_data,
                 route_coordinates=route_coordinates
             )
             
@@ -412,7 +410,7 @@ class MatchingService:
                 # データベース保存が失敗した場合、メモリから削除
                 return {"success": False, "error": f"DB保存に失敗しました: {str(e)}"}
             
-            lobby.add_user(passenger_id, UserRole.PASSENGER, (user.user_start_lat, user.user_destination_lng), (user.user_destination_lat, user.user_destination_lng), user_status=user.user_status) # ロビーにリクエストを追加
+            lobby.add_user(passenger_id, UserRole.PASSENGER, (user.user_start_lat, user.user_start_lng), (user.user_destination_lat, user.user_destination_lng), user_status=user.user_status) # ロビーにリクエストを追加
             
             # ユーザーの持つロビーIDを追加
             self.user_lobbies[user.user_id] = user.match_id
@@ -626,7 +624,9 @@ class MatchingService:
             pickups_deliveries.append((1 + i * 2, 1 + i * 2 + 1))
 
         coordinates.append(lobby.get_driver().user_destination)  # ドライバーの目的地
-
+        
+        print(f"経路座標: {coordinates}")
+        
         route_service = RouteGenerateService(
             api_key=settings.mapbox_api_key, # Mapbox APIキー
             coordinates=coordinates, # 経路座標
@@ -635,21 +635,21 @@ class MatchingService:
             end_index=len(coordinates) - 1 # ドライバーの目的地
         )
 
-        geojson = await route_service.get_geojson_route()
+        geodata = await route_service.get_geojson_route()
 
-        if geojson:
+        if geodata:
             print("✔ 経路生成成功")
         else:
             print("❌ 経路生成に失敗しました")
         
         match_data = {
             "status": "Moving",
-            "route_geojson": geojson
+            "route_geojson": geodata
         }
         
         # DBに保存
         try:
-            match = await self.match_crud.update_match(match_id=match.match_id, route_geojson=geojson, status=LobbyStatus.NAVIGATING)
+            match = await self.match_crud.update_match(match_id=match.match_id, route_geojson=geodata, status=LobbyStatus.NAVIGATING)
         except Exception as e:
             return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
         
