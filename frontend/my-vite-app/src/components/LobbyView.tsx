@@ -10,6 +10,7 @@ import {
   import { useState } from 'react'
   import apiClient from '../lib/apiClient'
   import MapSection from './MapSection'
+  import { useMatchStatusStore } from '../store/matchStatusStore'
   
   export default function LobbyView() {
     const [openMap, setOpenMap] = useState(false)
@@ -19,7 +20,7 @@ import {
     const [destination, setDestination] = useState<[number, number] | null>(null)
     const [origin, setOrigin] = useState<[number, number] | null>(null)
     const [focus, setFocus] = useState<'origin' | 'destination'>('origin')
-
+    const userId = useMatchStatusStore((s) => s.userId)
   
     const handleGeolocate = () => {
       navigator.geolocation.getCurrentPosition(
@@ -50,7 +51,7 @@ import {
       try {
         if (isJoining) {
           const res = await apiClient.post(`/matching/join_lobby`, {
-            passenger_id: 2,
+            passenger_id: userId,
             passenger_location: [origin[0], origin[1]],
             passenger_destination: [destination[0], destination[1]],
           })
@@ -61,7 +62,7 @@ import {
           }
         } else {
           await apiClient.post('/matching/lobbies', {
-            driver_id: 1,
+            driver_id: userId,
             driver_location: [origin[0], origin[1]],
             destination: [destination[0], destination[1]],
           })

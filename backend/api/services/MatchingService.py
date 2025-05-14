@@ -609,6 +609,12 @@ class MatchingService:
         except Exception as e:
             return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
         
+        # 評価用のレコードを作成
+        try:
+            await self.match_curd.create_evaluation_bulk(match_id=match.match_id, evaluations_data=users) # DBに保存
+        except Exception as e:
+            return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
+
         # ロビーのステータスを更新
         lobby.status = match.status # ロビーのステータスを更新
         for user in users:
@@ -641,11 +647,6 @@ class MatchingService:
             print("✔ 経路生成成功")
         else:
             print("❌ 経路生成に失敗しました")
-        
-        match_data = {
-            "status": "Moving",
-            "route_geojson": geodata
-        }
         
         # DBに保存
         try:
@@ -685,22 +686,6 @@ class MatchingService:
         print(f"DBにマッチを保存: {match.match_id}")
         return match
     
-    async def report_ride_completion(self, match_id: int) -> Dict[str, Any]:
-        """マッチング完了を報告"""
-        async with self.lock:
-            # マッチの存在確認
-            match = self.db.query(Match).filter(Match.match_id == match_id).first() # マッチIDでフィルタリング
-            if not match:
-                return {"success": False, "error": "マッチが存在しません"}
-            
-            # ステータスを更新
-            match.status = "Completed"
-            
-            # データベースに保存
-            self.db.commit()
-            self.db.refresh(match)
-            
-            return {"success": True, "message": "ルート案内が完了しました", "match_id": match_id}
 
     async def _find_closest_point_on_route(self, 
                                      point: Tuple[float, float], 

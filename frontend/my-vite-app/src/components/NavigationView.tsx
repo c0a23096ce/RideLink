@@ -1,10 +1,11 @@
 // src/components/NavigationView.tsx
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import apiClient from '../lib/apiClient';
 import mapboxgl from 'mapbox-gl';
 import MapboxLanguage from '@mapbox/mapbox-gl-language';
+import { useMatchStatusStore } from '../store/matchStatusStore'
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 
@@ -24,6 +25,8 @@ export default function NavigationView() {
   const [map, setMap] = useState<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const [alerted, setAlerted] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const userId = useMatchStatusStore((s) => s.userId)
 
   // ユーザーごとに色を割り当てる
   const userColors: { [key: number]: string } = {};
@@ -186,6 +189,32 @@ export default function NavigationView() {
     };
   }, [map, routeData, alerted]);
 
+  const handleOpenModal = () => {
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+  };
+
+  const handleComplete = async () => {
+    // 完了処理をここに記述
+    console.log('案内完了が報告されました');
+    setIsModalOpen(false);
+    // ここでAPIを呼び出して完了報告を行う
+    if (match_id) {
+      try {
+        await apiClient.post(`/matches/${match_id}/complete`, {
+          user_id: userId
+        });
+        console.log('完了報告が成功しました');
+        // ここで必要な処理を行う
+      } catch (error) {
+        console.error('完了報告に失敗しました:', error);
+      }
+    }
+  };
+
   if (!routeData) {
     return (
       <Box flex={1} display="flex" justifyContent="center" alignItems="center">
@@ -196,12 +225,43 @@ export default function NavigationView() {
 
   return (
     <Box
-      ref={mapContainerRef}
       flex={1}
       height="100%"
       width="100%"
       position={'relative'}
-    />
+    >
+      <Box ref={mapContainerRef} flex={1} height="100%" width="100%" />
+      
+      {/* 案内完了報告ボタン */}
+      <Button
+        variant="contained"
+        color="primary"
+        onClick={handleOpenModal}
+        style={{ position: 'absolute', bottom: 16, right: 16 }}
+      >
+        案内完了報告
+      </Button>
+
+      {/* モーダル */}
+      <Dialog open={isModalOpen} onClose={handleCloseModal}>
+        <DialogTitle>案内完了報告</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            このマッチングを完了として報告します。よろしいですか？
+            <br />
+            <strong>注意: 報告を行うと変更はできません。</strong>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseModal} color="secondary">
+            キャンセル
+          </Button>
+          <Button onClick={handleComplete} color="primary" autoFocus>
+            完了
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }
 

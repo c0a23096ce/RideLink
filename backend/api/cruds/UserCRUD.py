@@ -98,3 +98,4 @@ class UserCRUD:
         await self.db_session.delete(user)
         await self.db_session.commit()
         return True
+    

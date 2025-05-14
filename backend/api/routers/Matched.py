@@ -4,6 +4,7 @@ from dependencies import get_db
 import schemas.routes as route_schema
 from services.MatchedService import MatchedService
 from fastapi.responses import HTMLResponse
+from typing import Dict
 from config import settings
 from services.Enums import UserStatus
 
@@ -22,6 +23,38 @@ async def create_route(request_data):
         dict: レスポンスデータ
     """
     pass
+
+@router.post("{match_id}/complete")
+async def report_completion(match_id: int, user_data: int, db: Session = Depends(get_db)):
+    """目的地に到達したことを報告するエンドポイント
+
+    Args:
+        match_id (int): マッチID
+        db (Session, optional): データベースセッション. Defaults to Depends(get_db).
+    
+    Returns:
+        dict: 成功可否
+    """
+    matching_service = MatchedService(db)
+    res = matching_service.report_ride_completion(match_id=match_id, user_id=user_data.user_id)
+    return res
+
+@router.patch("/evaluate")
+async def evaluate_match(match_id: int, user_id: int, evaluation_data: Dict[int, int], db: Session = Depends(get_db)):
+    """マッチング相手の評価を行う終了エンドポイント
+
+    Args:
+        match_id (int): マッチID
+        user_id (int): ユーザーID
+        db (Session, optional): データベースセッション. Defaults to Depends(get_db).
+        evaluation_data: ユーザーIDをキーに持ち、評価値をValueに持つ辞書
+    
+    Returns:
+        dict: 成功可否
+    """
+    matching_service = MatchedService(db)
+    res = matching_service.update_evaluation(match_id=match_id, user_id=user_id, evaluation_data=evaluation_data)
+    return res
 
 @router.get("/{user_id}")
 async def get_match_id(user_id: int, db: Session = Depends(get_db)):

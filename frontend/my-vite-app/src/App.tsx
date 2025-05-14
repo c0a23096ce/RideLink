@@ -47,6 +47,13 @@ export default function App() {
           </Layout>
         }
       />
+      <Route
+        path="/matches/:match_id/completed"
+        element={
+          <Layout>
+            <NavigationPage />
+          </Layout>
+        }
     </Routes>
   )
 }

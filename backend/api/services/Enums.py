@@ -13,6 +13,7 @@ class UserStatus:
     NAVIGATING = "navigating"  # ナビゲーション中
     COMPLETED = "completed"  # マッチング完了
 
+
 class LobbyStatus:
     """ロビーのステータス（バックエンド/フロントエンドの連携用）"""
     OPEN = "open"                 # 参加者募集中（誰も入ってないか、承認してない）
@@ -21,3 +22,8 @@ class LobbyStatus:
     NAVIGATING = "navigating"     # 案内中（マッチ確定後、移動中）
     COMPLETED = "completed"       # 案内完了
     CLOSED = "closed"             # ドライバーがロビーを閉じた（キャンセル扱い）
+
+class EvaluationStatus:
+    """評価のステータス"""
+    WAITING = "waiting"  # 評価待ち
+    COMPLETED = "completed"  # 評価済み

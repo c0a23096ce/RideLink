@@ -9,7 +9,6 @@ class MatchDTO:
     max_passengers: int  # 最大乗車人数
     max_distance: float  # 最大距離
     preferences: Optional[Dict[str, Any]]  # ユーザーの好みを保存するJSON
-    is_deleted: bool  # 削除フラグ（False: 有効, True: 削除済み）
     created_at: str  # マッチング作成日時（ISOフォーマットなど）
     updated_at: str  # 最終更新日時（ISOフォーマットなど）
 
@@ -24,6 +23,5 @@ class MatchUserDTO:
     user_destination_lng: float  # ユーザーの目的地（経度）
     user_role: str  # ユーザーの役割（'driver'/'passenger'）
     user_status: str  # ユーザーのステータス（'pending'/'accepted'/'rejected'/'completed'）
-    is_deleted: bool  # 削除フラグ（False: 有効, True: 削除済み）
     created_at: str  # 作成日時（ISOフォーマットなど）
     updated_at: str  # 更新日時（ISOフォーマットなど）

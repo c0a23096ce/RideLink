@@ -5,11 +5,13 @@ import apiClient from '../lib/apiClient'
 import { UserCardList } from './card'
 import { LobbyUser } from './card/UserCard'
 import { Box, Button } from '@mui/material'
+import { useMatchStatusStore } from '../store/matchStatusStore'
 
 export default function LobbyUserPage() {
   const { lobby_id } = useParams()
   const [users, setUsers] = useState<LobbyUser[]>([])
   const [loading, setLoading] = useState(true)
+  const userId = useMatchStatusStore((s) => s.userId)
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -35,7 +37,7 @@ export default function LobbyUserPage() {
   const handleApprove = async () => {
     try {
       await apiClient.post(`/matching/lobbies/${lobby_id}/approved`, {
-        user_id: 2, // 仮のユーザーID
+        user_id: userId, // 仮のユーザーID
         lobby_id,
       })
       alert('マッチングが承認されました')
