@@ -1,12 +1,14 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from dependencies import get_db
+from dependencies import get_db , get_connection_manager
 import schemas.routes as route_schema
 from services.MatchedService import MatchedService
 from fastapi.responses import HTMLResponse
 from typing import Dict
 from config import settings
 from services.Enums import UserStatus
+from services.ConnectionManager import ConnectionManager
+import schemas.routes as route_schema
 
 router = APIRouter(
     prefix="/matches",
@@ -24,8 +26,8 @@ async def create_route(request_data):
     """
     pass
 
-@router.post("{match_id}/complete")
-async def report_completion(match_id: int, user_data: int, db: Session = Depends(get_db)):
+@router.post("/{match_id}/complete")
+async def report_completion(match_id: int, user_data: route_schema.ComplateUser, db: Session = Depends(get_db), connection_manager: ConnectionManager = Depends(get_connection_manager)):
     """目的地に到達したことを報告するエンドポイント
 
     Args:
@@ -35,12 +37,12 @@ async def report_completion(match_id: int, user_data: int, db: Session = Depends
     Returns:
         dict: 成功可否
     """
-    matching_service = MatchedService(db)
-    res = matching_service.report_ride_completion(match_id=match_id, user_id=user_data.user_id)
+    matching_service = MatchedService(db, connection_manager)
+    res = await matching_service.report_ride_completion(match_id=match_id, user_id=user_data.user_id)
     return res
 
 @router.patch("/evaluate")
-async def evaluate_match(match_id: int, user_id: int, evaluation_data: Dict[int, int], db: Session = Depends(get_db)):
+async def evaluate_match(match_id: int, user_id: int, evaluation_data: Dict[int, int], db: Session = Depends(get_db), connection_manager: ConnectionManager = Depends(get_connection_manager)):
     """マッチング相手の評価を行う終了エンドポイント
 
     Args:
@@ -52,12 +54,12 @@ async def evaluate_match(match_id: int, user_id: int, evaluation_data: Dict[int,
     Returns:
         dict: 成功可否
     """
-    matching_service = MatchedService(db)
-    res = matching_service.update_evaluation(match_id=match_id, user_id=user_id, evaluation_data=evaluation_data)
+    matching_service = MatchedService(db, connection_manager)
+    res = await matching_service.update_evaluation(match_id=match_id, user_id=user_id, evaluation_data=evaluation_data)
     return res
 
 @router.get("/{user_id}")
-async def get_match_id(user_id: int, db: Session = Depends(get_db)):
+async def get_match_id(user_id: int, db: Session = Depends(get_db), connection_manager: ConnectionManager = Depends(get_connection_manager)):
     """ユーザーのマッチIDを取得するエンドポイント
 
     Args:
@@ -68,7 +70,7 @@ async def get_match_id(user_id: int, db: Session = Depends(get_db)):
         dict: マッチID
     """
     # マッチングサービスのインスタンスを作成
-    matching_service = MatchedService(db)
+    matching_service = MatchedService(db, connection_manager)
     # マッチIDを取得
     match_id = await matching_service.get_match_id(user_id)
 
@@ -78,7 +80,7 @@ async def get_match_id(user_id: int, db: Session = Depends(get_db)):
     return {"match_id": match_id}
 
 @router.get("/{user_id}/status")
-async def get_user_status(user_id: int, db: Session = Depends(get_db)):
+async def get_user_status(user_id: int, db: Session = Depends(get_db), connection_manager: ConnectionManager = Depends(get_connection_manager)):
     """ユーザーのマッチング状況を取得するエンドポイント
 
     Args:
@@ -89,7 +91,7 @@ async def get_user_status(user_id: int, db: Session = Depends(get_db)):
         dict: マッチング状況
     """
     # マッチングサービスのインスタンスを作成
-    matching_service = MatchedService(db)
+    matching_service = MatchedService(db, connection_manager)
     # マッチング状況を取得
     status = await matching_service.get_user_status(user_id)
 
@@ -99,7 +101,7 @@ async def get_user_status(user_id: int, db: Session = Depends(get_db)):
     return {"status": status}
 
 @router.get("/{match_id}/route") # , response_model=route_schema.RouteResponse
-async def get_route(match_id: int, db: Session = Depends(get_db)):
+async def get_route(match_id: int, db: Session = Depends(get_db), connection_manager: ConnectionManager = Depends(get_connection_manager)):
     """決定したマッチのルート情報とユーザーの位置を取得する
 
     Args:
@@ -111,7 +113,7 @@ async def get_route(match_id: int, db: Session = Depends(get_db)):
         処理成功 or 失敗(bool)、メッセージ、ステータスメッセージ
     """
     # マッチングサービスのインスタンスを作成
-    matching_service = MatchedService(db)
+    matching_service = MatchedService(db, connection_manager)
     # ルート情報を取得
     route = await matching_service.get_matched_route(match_id)
 

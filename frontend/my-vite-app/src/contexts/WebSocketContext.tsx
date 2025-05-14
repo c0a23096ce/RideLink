@@ -24,6 +24,10 @@ export const WebSocketProvider = ({ children }: { children: React.ReactNode }) =
     ws.onopen = () => {
       console.log('✅ WebSocket 接続完了')
       setReconnectAttempts(0)
+    const restore = async () => {
+      await useRestoreMatchStatus(userId)
+    }
+    restore()
     }
 
     ws.onclose = () => {

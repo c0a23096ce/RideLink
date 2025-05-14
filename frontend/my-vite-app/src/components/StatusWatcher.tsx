@@ -11,7 +11,6 @@ export default function StatusWatcher() {
   const matchId = useMatchStatusStore((s) => s.matchId)
   const userId = useMatchStatusStore((s) => s.userId)
 
-  // ✅ ページ再読込時：useRestoreMatchStatusを呼ぶ
   useEffect(() => {
     const restore = async () => {
       await useRestoreMatchStatus(userId)
@@ -27,8 +26,8 @@ export default function StatusWatcher() {
   }
 
   useEffect(() => {
-    if (!status) return
-    const targetPath = routeMap[status]?.(matchId || '')
+    if (!status || (status !== 'idol' && !matchId)) return // matchId が必要な状態をガード
+    const targetPath = routeMap[status]?.(matchId as string) // matchId が null でないことを保証
 
     if (
       targetPath &&
@@ -37,12 +36,13 @@ export default function StatusWatcher() {
       !location.pathname.startsWith('/register')
     ) {
       console.log(`StatusWatcher: 遷移 → ${targetPath}`)
-      navigate(targetPath)
+      navigate(targetPath, { replace: true })
     }
   }, [status, matchId, navigate, location])
 
   return null
 }
+
 
 
 

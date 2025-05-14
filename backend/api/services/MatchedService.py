@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 from services.Enums import UserStatus
 from cruds.MatchCRUD import MatchCRUD
 from services.ConnectionManager import ConnectionManager
+import asyncio
 
 class MatchedService:
     def __init__(self, db_session: Session, connection_manager: ConnectionManager):
@@ -11,6 +12,7 @@ class MatchedService:
         self.db_session = db_session
         self.match_crud = MatchCRUD(db_session)
         self.connection_manager = connection_manager  # ConnectionManagerを追加
+        self.lock = asyncio.Lock()  # ロックを初期化
     
     async def get_match_id(self, user_id: int) -> Optional[int]:
         """

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Request
 from services.MatchingService import MatchingService
 from services.ConnectionManager import ConnectionManager
+from services.MatchedService import MatchedService
 
 load_dotenv()
 # JWT設定
@@ -77,6 +78,9 @@ def get_current_user(token_data: TokenData = Depends(get_token_data), db: Sessio
 
 def get_matching_service(request: Request) -> MatchingService:
     return request.app.state.matching_service
+
+# def get_matched_service(request: Request) -> MatchedService:
+    
 
 def get_connection_manager(request: Request) -> ConnectionManager:
     return request.app.state.connection_manager

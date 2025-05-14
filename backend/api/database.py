@@ -25,14 +25,17 @@ AsyncSessionLocal = sessionmaker(
 
 async def reset_database():
     """
-    外部キー制約を無効化してデータベースをリセット
+    データベース内のすべてのテーブルを削除してリセット
     """
     async with engine.begin() as connection:
         # 外部キー制約を無効化
         await connection.execute(text("SET FOREIGN_KEY_CHECKS=0"))
         
-        # 全テーブルを削除
-        await connection.run_sync(Base.metadata.drop_all)
+        # データベース内のすべてのテーブルを削除
+        tables = await connection.execute(text("SHOW TABLES"))
+        table_names = [row[0] for row in tables]
+        for table in table_names:
+            await connection.execute(text(f"DROP TABLE IF EXISTS `{table}`"))
         
         # テーブルを再作成
         await connection.run_sync(Base.metadata.create_all)

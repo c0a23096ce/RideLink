@@ -1,5 +1,7 @@
+// src/App.tsx
 import { Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
+import StatusWatcher from './components/StatusWatcher'
 
 import LoginPage from './pages/login'
 import RegisterPage from './pages/register'
@@ -9,54 +11,60 @@ import NavigationPage from './pages/navigation'
 
 export default function App() {
   return (
-    <Routes>
-      {/* Layoutなしページ */}
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+    <>
+      <StatusWatcher />
 
-      {/* Layoutありページ（Sidebarつき） */}
-      <Route
-        path="/"
-        element={
-          <Layout>
-            <LobbyPage />
-          </Layout>
-        }
-      />
-      <Route
-        path="/lobbies"
-        element={
-          <Layout>
-            <LobbyPage />
-          </Layout>
-        }
-      />
-      <Route
-        path="/lobbies/:lobby_id/approved"
-        element={
-          <Layout>
-            <LobbyApprovedPage />
-          </Layout>
-        }
-      />
-      <Route
-        path="/matches/:match_id/navigation"
-        element={
-          <Layout>
-            <NavigationPage />
-          </Layout>
-        }
-      />
-      <Route
-        path="/matches/:match_id/completed"
-        element={
-          <Layout>
-            <NavigationPage />
-          </Layout>
-        }
-    </Routes>
+      <Routes>
+        {/* Layoutなしページ */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+
+        {/* Layoutありページ */}
+        <Route
+          path="/"
+          element={
+            <Layout>
+              <LobbyPage />
+            </Layout>
+          }
+        />
+        <Route
+          path="/lobbies"
+          element={
+            <Layout>
+              <LobbyPage />
+            </Layout>
+          }
+        />
+        <Route
+          path="/lobbies/:lobby_id/approved"
+          element={
+            <Layout>
+              <LobbyApprovedPage />
+            </Layout>
+          }
+        />
+        <Route
+          path="/matches/:match_id/navigation"
+          element={
+            <Layout>
+              <NavigationPage />
+            </Layout>
+          }
+        />
+        <Route
+          path="/matches/:match_id/completed"
+          element={
+            <Layout>
+              <NavigationPage />
+            </Layout>
+          }
+        />
+      </Routes>
+    </>
   )
 }
+
 
 
 

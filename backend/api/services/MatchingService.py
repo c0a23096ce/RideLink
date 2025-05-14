@@ -611,7 +611,7 @@ class MatchingService:
         
         # 評価用のレコードを作成
         try:
-            await self.match_curd.create_evaluation_bulk(match_id=match.match_id, evaluations_data=users) # DBに保存
+            await self.match_crud.create_evaluation_bulk(match_id=match.match_id, evaluations_data=users) # DBに保存
         except Exception as e:
             return {"success": False, "error": f"DB更新に失敗しました: {str(e)}"}
 

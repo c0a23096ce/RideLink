@@ -395,12 +395,15 @@ class MatchCRUD:
 
         Args:
             match_id: マッチID
-            evaluations_data: ユーザーIDの辞書
+            evaluations_data: ユーザーのID
         
         Returns:
             None
         """
-        user_ids = evaluations_data.get("user_ids", [])
+        user_ids = []
+        for evaluation_data in evaluations_data:
+            user_ids.append(evaluation_data.get("user_id"))
+        
         evaluations = []
         # 各ユーザーが他のユーザーを評価するペアを作成
         for evaluator_id in user_ids:
