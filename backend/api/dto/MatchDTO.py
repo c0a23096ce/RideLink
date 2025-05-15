@@ -25,3 +25,14 @@ class MatchUserDTO:
     user_status: str  # ユーザーのステータス（'pending'/'accepted'/'rejected'/'completed'）
     created_at: str  # 作成日時（ISOフォーマットなど）
     updated_at: str  # 更新日時（ISOフォーマットなど）
+
+@dataclass
+class ReviewTargetDTO:
+    id: int # 評価対象の一意のID
+    match_id: int # マッチID（外部キー）
+    evaluator_id: int # 評価者のユーザーID
+    evaluatee_id: int # 評価されるユーザーID
+    rating: Optional[int] # 評価スコア（1-5）
+    status: str # 評価のステータス（'pending'/'completed'）
+    created_at: str # 作成日時（ISOフォーマットなど）
+    updated_at: str # 更新日時（ISOフォーマットなど）

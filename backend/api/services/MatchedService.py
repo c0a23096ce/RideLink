@@ -79,26 +79,51 @@ class MatchedService:
                 await self.connection_manager.send_to_json_user(user_id, {"type": "status_update", "message": "ルート案内が完了しました"})
             
             return {"success": True, "message": "ルート案内が完了しました", "user_id": user_id}
+    
+    async def get_reviwew_target(self, match_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+        """評価対象のユーザー情報を取得"""
+        # マッチIDからユーザー情報を取得
+        users = await self.match_crud.get_not_evaluated_list(match_id=match_id, user_id=user_id)
+        if not users:
+            return None
+        review_target = []
+        for user in users:
+            user_data = {
+                "user_id": user.evaluatee_id
+            }
+            review_target.append(user_data)
         
-    async def update_evaluation(self, match_id: int, user_id: int, evaluation_data: Dict[int, int]) -> Dict[str, Any]:
+        return_data = {
+            "match_id": match_id,
+            "users": review_target
+        }
+        
+        return {"success": True, "data": return_data}
+        
+    
+    async def update_evaluation(self, match_id: int, user_id: int, ratings: Dict[int, int]) -> Dict[str, Any]:
         """評価を更新"""
         async with self.lock:
             # マッチの存在確認
             try:
-                await self.match_crud.update_evaluation(match_id=match_id, user_id=user_id, evaluation_data=evaluation_data)
-
-                all_completed = await self.match_crud.check_all_completed(match_id=match_id)
+                # 評価内容を更新
+                await self.match_crud.update_evaluation(match_id=match_id, user_id=user_id, evaluation_data=ratings)
+                # 評価者のユーザー情報をHistoryに保存、マッチユーザーを削除
+                match_user = await self.match_crud.get_match_by_user(user_id=user_id)
+                await self.match_crud.save_to_match_user_history(user=match_user)
+                await self.match_crud.delete_match_user(match_id=match_id, user_id=match_user.id)
+                
+                all_completed = await self.match_crud.check_all_reviewed(match_id=match_id)
                 if all_completed:
                     # 全員が評価を完了した場合、Historyに保存、マッチを削除
                     match_dto = await self.match_crud.get_match(match_id=match_id)
-                    match_users = await self.match_crud.get_users_by_match(match_id=match_dto.match_id)
                     await self.match_crud.save_to_match_history(match=match_dto)
-                    for match_user in match_users:
-                        await self.match_crud.save_to_match_user_history(user=match_user)
-                    await self.match_crud.delete_match(match_id=match_id)
-                    await self.match_crud.delete_match_users(match_id=match_id)
-            except IntegrityError as e:
+                    await self.match_crud.delete_match(match_id=match_dto.match_id)
+                    
+            except Exception as e:
                 return {"success": False, "error": f"DB削除に失敗しました: {str(e)}"}
             
-
+            if self.connection_manager:
+                # WebSocketを通じてユーザーにメッセージを送信
+                await self.connection_manager.send_to_json_user(user_id, {"type": "status_update", "message": "評価が完了しました"})
             return {"success": True, "message": "評価が完了しました", "user_id": user_id}

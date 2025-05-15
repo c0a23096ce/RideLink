@@ -1,7 +1,6 @@
-'use client';
-
-import { Grid } from '@mui/material';
-import UserCard, { LobbyUser } from './UserCard';
+// src/components/card/UserCardList.tsx
+import { Grid } from '@mui/material'
+import UserCard, { LobbyUser } from './UserCard'
 
 export default function UserCardList({ users }: { users: LobbyUser[] }) {
   return (
@@ -12,5 +11,7 @@ export default function UserCardList({ users }: { users: LobbyUser[] }) {
         </Grid>
       ))}
     </Grid>
-  );
+  )
 }
+
+

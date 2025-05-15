@@ -41,8 +41,8 @@ async def report_completion(match_id: int, user_data: route_schema.ComplateUser,
     res = await matching_service.report_ride_completion(match_id=match_id, user_id=user_data.user_id)
     return res
 
-@router.patch("/evaluate")
-async def evaluate_match(match_id: int, user_id: int, evaluation_data: Dict[int, int], db: Session = Depends(get_db), connection_manager: ConnectionManager = Depends(get_connection_manager)):
+@router.patch("/{match_id}/review-targets/{user_id}")
+async def evaluate_match(evaluation_data: route_schema.ReviewRequest, db: Session = Depends(get_db), connection_manager: ConnectionManager = Depends(get_connection_manager)):
     """マッチング相手の評価を行う終了エンドポイント
 
     Args:
@@ -55,8 +55,11 @@ async def evaluate_match(match_id: int, user_id: int, evaluation_data: Dict[int,
         dict: 成功可否
     """
     matching_service = MatchedService(db, connection_manager)
-    res = await matching_service.update_evaluation(match_id=match_id, user_id=user_id, evaluation_data=evaluation_data)
-    return res
+    return await matching_service.update_evaluation(
+        match_id=evaluation_data.match_id,
+        user_id=evaluation_data.user_id,
+        ratings=evaluation_data.ratings
+        )
 
 @router.get("/{user_id}")
 async def get_match_id(user_id: int, db: Session = Depends(get_db), connection_manager: ConnectionManager = Depends(get_connection_manager)):
@@ -99,6 +102,19 @@ async def get_user_status(user_id: int, db: Session = Depends(get_db), connectio
         return {"status": UserStatus.IDOL}
     
     return {"status": status}
+
+@router.get("/{match_id}/review-targets/{user_id}")
+async def get_review_targets(
+    match_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    connection_manager: ConnectionManager = Depends(get_connection_manager)
+):
+    matching_service = MatchedService(db, connection_manager)
+    review_target = await matching_service.get_reviwew_target(match_id, user_id)
+    if not review_target:
+        return {"error": "評価対象のユーザーが見つかりません"}
+    return review_target
 
 @router.get("/{match_id}/route") # , response_model=route_schema.RouteResponse
 async def get_route(match_id: int, db: Session = Depends(get_db), connection_manager: ConnectionManager = Depends(get_connection_manager)):

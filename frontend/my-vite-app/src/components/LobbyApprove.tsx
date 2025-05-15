@@ -16,14 +16,13 @@ export default function LobbyUserPage() {
   useEffect(() => {
     const fetchUsers = async () => {
       if (!lobby_id) return
-      console.log('問い合わせるlobby_id:', lobby_id)
       try {
         const res = await apiClient.get(`/matching/lobbies/${lobby_id}/users`)
-        const formattedUsers = res.data.map((id: number) => ({
-          user_id: id,
+        const formattedUsers = res.data.map((user: any) => ({
+          user_id: user.user_id,
+          average_rating: user.average_rating,
         }))
         setUsers(formattedUsers)
-        console.log('取得したユーザー:', formattedUsers)
       } catch (error) {
         console.error('ユーザー一覧の取得に失敗しました', error)
       } finally {
@@ -37,7 +36,7 @@ export default function LobbyUserPage() {
   const handleApprove = async () => {
     try {
       await apiClient.post(`/matching/lobbies/${lobby_id}/approved`, {
-        user_id: userId, // 仮のユーザーID
+        user_id: userId,
         lobby_id,
       })
       alert('マッチングが承認されました')
@@ -78,4 +77,5 @@ export default function LobbyUserPage() {
     </main>
   )
 }
+
 

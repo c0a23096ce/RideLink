@@ -8,6 +8,7 @@ import RegisterPage from './pages/register'
 import LobbyPage from './pages/lobbies'
 import LobbyApprovedPage from './pages/lobbyapproved'
 import NavigationPage from './pages/navigation'
+import CompletedPage from './pages/completed'
 
 export default function App() {
   return (
@@ -56,7 +57,7 @@ export default function App() {
           path="/matches/:match_id/completed"
           element={
             <Layout>
-              <NavigationPage />
+              <CompletedPage />
             </Layout>
           }
         />

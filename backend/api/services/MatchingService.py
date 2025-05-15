@@ -582,14 +582,21 @@ class MatchingService:
             }
     
     async def get_lobby_users(self, lobby_id: int) -> List[int]:
-        """ロビーに参加しているユーザーのIDを取得"""
-        if lobby_id not in self.ride_lobbies:
-            print(f"ロビーが存在しません: {lobby_id}")
-            print(f"lobby_type: {type(lobby_id)}")
-            return []
         
-        lobby = self.ride_lobbies[lobby_id]
-        return list(lobby.participants.keys()) # とりあえずドライバーと乗客のIDを返す
+        results = await self.match_crud.get_users_by_match(lobby_id)
+        user_ids = [user.user_id for user in results]
+        
+        results = []
+        for user_id in user_ids:
+            avg_score = await self.match_crud.get_average_score(user_id)
+            if avg_score:
+                avg_score = round(avg_score, 1)
+            results.append({
+                "user_id": user_id,
+                "average_rating": avg_score
+            })
+
+        return results
     
     async def _complete_matching(self, lobby: RideLobby) -> Match:
         """マッチングを完了してデータベースに保存"""

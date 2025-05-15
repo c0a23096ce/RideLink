@@ -1,9 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func
 from typing import Optional, List, Dict, Any
 from models.models import Match, MatchUser, MatchHistory, MatchUsersHistory, Evaluation
 from services.Enums import UserRole, EvaluationStatus
-from dto.MatchDTO import MatchDTO, MatchUserDTO
+from dto.MatchDTO import MatchDTO, MatchUserDTO, ReviewTargetDTO
 
 class MatchCRUD:
     def __init__(self, db_session: AsyncSession):
@@ -281,7 +282,32 @@ class MatchCRUD:
         await self.db_session.delete(match)
         await self.db_session.commit()
         return True
+    
+    async def delete_match_user(self, match_id: int, user_id: int) -> bool:
+        """
+        指定されたマッチのユーザーを物理削除
 
+        Args:
+            match_id: マッチID
+            user_id: ユーザーID
+        
+        Returns:
+            bool: 削除成功ならTrue、失敗ならFalse
+        """
+        result = await self.db_session.execute(
+            select(MatchUser).where(
+                MatchUser.match_id == match_id,
+                MatchUser.user_id == user_id,
+            )
+        )
+        match_user = result.scalar_one_or_none()
+        if not match_user:
+            return False
+
+        await self.db_session.delete(match_user)
+        await self.db_session.commit()
+        return True
+    
     async def delete_match_users(self, match_id: int) -> bool:
         """
         指定されたマッチのユーザーを物理削除
@@ -440,7 +466,19 @@ class MatchCRUD:
         )
         evaluations = result.scalars().all()
         
-        return evaluations
+        return [
+            ReviewTargetDTO(
+                id=evaluation.id,
+                match_id=evaluation.match_id,
+                evaluator_id=evaluation.evaluator_id,
+                evaluatee_id=evaluation.evaluatee_id,
+                rating=evaluation.rating,
+                status=evaluation.status,
+                created_at=evaluation.created_at.isoformat() if evaluation.created_at else None,
+                updated_at=evaluation.updated_at.isoformat() if evaluation.updated_at else None
+            )
+            for evaluation in evaluations
+        ]
     
     async def check_all_reviewed(self, match_id: int) -> bool:
         """
@@ -482,8 +520,27 @@ class MatchCRUD:
         evaluations = result.scalars().all()
         
         return evaluations
+    
+    async def get_average_score(self, user_id: int) -> Optional[float]:
+        """
+        指定ユーザーが受け取った評価の平均スコアを返す
 
-    async def update_evaluation(self, match_id: int, user_id: int, evaluation_data: Dict[int, int]) -> None:
+        Args:
+            user_id: 評価対象者（evaluatee）のユーザーID
+
+        Returns:
+            平均スコア（float）または None（評価なし）
+        """
+        result = await self.db_session.execute(
+            select(func.avg(Evaluation.rating)).where(
+                Evaluation.evaluatee_id == user_id,
+                Evaluation.status == EvaluationStatus.COMPLETED
+            )
+        )
+        avg_score = result.scalar()
+        return float(avg_score) if avg_score is not None else None
+
+    async def update_evaluation(self, match_id: int, user_id: int, evaluation_data: Dict[int, int]) -> bool:
         """
         マッチの評価を更新するメソッド
 
@@ -495,10 +552,18 @@ class MatchCRUD:
         Returns:
             bool: 更新成功ならTrue、失敗ならFalse
         """
-        evaluations = await self.get_not_evaluated_list(match_id=match_id, user_id=user_id) # 未評価のリストを取得
-        if not evaluations:
-            return
+        result = await self.db_session.execute(
+            select(Evaluation).where(
+                Evaluation.match_id == match_id,
+                Evaluation.evaluator_id == user_id,
+                Evaluation.status == EvaluationStatus.WAITING
+            )
+        )
         
+        evaluations = result.scalars().all()
+        if not evaluations:
+            return False
+
         for evaluation in evaluations:
             if evaluation.evaluatee_id in evaluation_data:
                 evaluation.status = EvaluationStatus.COMPLETED
