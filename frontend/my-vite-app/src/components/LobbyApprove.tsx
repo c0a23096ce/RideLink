@@ -47,7 +47,10 @@ export default function LobbyUserPage() {
 
   const handleCancel = async () => {
     try {
-      await apiClient.post(`/matching/lobbies/${lobby_id}/cancel`)
+      await apiClient.post(`/matching/lobbies/${lobby_id}/cancel`, {
+        user_id: userId,
+        lobby_id: lobby_id
+      })
       alert('マッチングをキャンセルしました')
     } catch (error) {
       console.error('キャンセルに失敗しました', error)

@@ -473,7 +473,7 @@ class MatchingService:
         
         return result
 
-    async def cancel_ride_request(self, passenger_id: int, lobby_id: str = None) -> Dict[str, Any]:
+    async def cancel_ride_request(self, passenger_id: int, lobby_id: int = None) -> Dict[str, Any]:
         """乗車者がリクエストをキャンセル"""
         async with self.lock:
             # lobby_idが指定されていない場合は、ユーザーのロビーを使用
@@ -481,28 +481,60 @@ class MatchingService:
                 if passenger_id not in self.user_lobbies:
                     return {"success": False, "error": "ロビーに所属していません"}
                 lobby_id = self.user_lobbies[passenger_id]
-            
+
             # ロビーの存在確認
             if lobby_id not in self.ride_lobbies:
                 return {"success": False, "error": "ロビーが存在しません"}
-            
+
             lobby = self.ride_lobbies[lobby_id]
-            
+
             # リクエストの存在確認
             if passenger_id not in lobby.participants:
                 return {"success": False, "error": "リクエストが存在しません"}
-            
-            # 確定済みの場合はキャンセル不可
-            if passenger_id in lobby.get_passengers() and lobby.participants[passenger_id].user_status == RequestStatus.CONFIRMED:
-                return {"success": False, "error": "確定済みのリクエストはキャンセルできません"}
-            
-            # リクエストを削除
+
+            # ステータスが承認済みまたは確定済みの場合はキャンセル不可
+            user_status = lobby.participants[passenger_id].user_status
+            if user_status in [UserStatus.APPROVED, UserStatus.MATCHED, UserStatus.NAVIGATING]:
+                return {"success": False, "error": "承認済み・確定済みのリクエストはキャンセルできません"}
+
+            # データベースからも削除
+            try:
+                await self.match_crud.delete_match_user(lobby_id, passenger_id)
+            except Exception as e:
+                return {"success": False, "error": f"DB削除に失敗しました: {str(e)}"}
+
+            # メモリ上から削除
             del lobby.participants[passenger_id]
-            
-            # 乗客情報を削除
             if passenger_id in self.user_lobbies:
                 del self.user_lobbies[passenger_id]
-            
+
+            # ロビーがWAITING_APPROVALだった場合、空きができたのでOPENに戻す
+            if lobby.status == LobbyStatus.WAITING_APPROVAL and not lobby.is_full():
+                lobby.status = LobbyStatus.OPEN
+                try:
+                    await self.match_crud.update_match(match_id=lobby_id, status=LobbyStatus.OPEN)
+                except Exception as e:
+                    return {"success": False, "error": f"ロビーステータス更新に失敗しました: {str(e)}"}
+
+                # 他の参加者・ドライバーに通知
+                if self.connection_manager:
+                    for user in lobby.participants.values():
+                        await self.connection_manager.send_to_json_user(user.user_id, {
+                            "type": "status_update",
+                            "lobby_id": lobby_id,
+                            "message": "ロビーに空きができました。"
+                        })
+
+            # WebSocket通知（ドライバーにキャンセル通知）
+            if self.connection_manager:
+                driver = lobby.get_driver()
+                if driver:
+                    await self.connection_manager.send_to_json_user(driver.user_id, {
+                        "type": "status_update",
+                        "lobby_id": lobby_id,
+                        "message": f"乗客 {passenger_id} がリクエストをキャンセルしました"
+                    })
+
             return {"success": True, "message": "リクエストをキャンセルしました"}
     
     async def approve_ride(self, user_id: int, lobby_id: int):

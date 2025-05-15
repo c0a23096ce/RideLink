@@ -82,11 +82,14 @@ async def lobby_approve(
     )
 
 # ロビーの拒否API
-@router.patch("/lobbies/{match_id}/complete")
-async def complete_ride(
-    match_id: int,
+@router.patch("/lobbies/{match_id}/cancel")
+async def cancel_lobby(
+    match_data: match_shema.CancelLobby,
     db: Session = Depends(get_db),
     matching_service: MatchingService = Depends(get_matching_service)
 ):
     matching_service.set_db(db)
-    return await matching_service.report_ride_completion(match_id)
+    return await matching_service.cancel_ride_request(
+        passenger_id=match_data.user_id,
+        lobby_id=match_data.match_id
+    )

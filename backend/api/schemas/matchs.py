@@ -21,7 +21,10 @@ class MatchJoin(BaseModel):
 
 class ApproveLobby(BaseModel):
     user_id: int = Field(..., example=1)
-    
+
+class CancelLobby(BaseModel):
+    user_id: int = Field(..., example=1)
+    match_id: int = Field(..., example=1)
 
 class CreateLobbyResponse(BaseModel):
     success: bool
